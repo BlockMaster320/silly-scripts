@@ -62,6 +62,9 @@ Build from the spec to preserve these settings; passing `main.py` with the same
    **Browse**. Python discovery checks the current interpreter, PATH, and Windows
    `py -0p` installations. Blender discovery checks PATH and common
    `Program Files/Blender Foundation/Blender*/blender.exe` locations.
+   Blender automatically selects the newest detected version, including when a
+   newer installation is found after startup. Choosing an executable manually
+   keeps that selection for the current session.
 3. Select `basic_types`, keep **Runtime: Python**, and press **Run**. `Name` is a
    string field even though its argparse definition has no `type=`. `Count` and
    `Scale` are numeric controls. `choices` demonstrates a format dropdown.
