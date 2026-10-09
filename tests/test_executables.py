@@ -7,9 +7,39 @@ from tests.support import APP, wait_until
 
 from app.executable_discovery import ExecutableDiscovery, executable_candidates
 from app.models import ExecutableInfo
+from app.settings_panel import ExecutableSelector
 
 
 class ExecutableTests(unittest.TestCase):
+    def test_blender_selects_latest_version_regardless_of_probe_order(self) -> None:
+        old = Path("blender-old.exe")
+        latest = Path("blender-latest.exe")
+        selector = ExecutableSelector("Blender", str(old))
+        self.addCleanup(selector.deleteLater)
+        selector.add_executable(ExecutableInfo(latest, "Blender"))
+        selector.add_executable(ExecutableInfo(old, "Blender", "4.9.9"))
+        selector.add_executable(ExecutableInfo(latest, "Blender", "4.10.2"))
+        selector.add_executable(ExecutableInfo(Path("blender-middle.exe"), "Blender", "4.10.1"))
+        selector.add_executable(ExecutableInfo(old, "Blender", "4.9.9"))
+        self.assertEqual(selector.path(), str(latest))
+
+    def test_blender_manual_choice_survives_later_version_probes(self) -> None:
+        old = Path("blender-old.exe")
+        latest = Path("blender-latest.exe")
+        selector = ExecutableSelector("Blender", "")
+        self.addCleanup(selector.deleteLater)
+        selector.add_executable(ExecutableInfo(old, "Blender", "4.0.0"))
+        selector.combo.activated.emit(0)
+        selector.add_executable(ExecutableInfo(latest, "Blender", "5.0.0"))
+        self.assertEqual(selector.path(), str(old))
+
+    def test_python_keeps_saved_selection(self) -> None:
+        saved = Path("python-saved.exe")
+        selector = ExecutableSelector("Python", str(saved))
+        self.addCleanup(selector.deleteLater)
+        selector.add_executable(ExecutableInfo(Path("python-new.exe"), "Python", "3.14.0"))
+        self.assertEqual(selector.path(), str(saved))
+
     def test_current_python_is_discovered(self) -> None:
         candidates = executable_candidates()
         self.assertTrue(any(info.kind == "Python" and info.path == Path(sys.executable).resolve() for info in candidates))

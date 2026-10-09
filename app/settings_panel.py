@@ -23,6 +23,8 @@ class ExecutableSelector(QWidget):
     def __init__(self, kind: str, selected: str) -> None:
         super().__init__()
         self.kind = kind
+        self._auto_select_latest = kind == "Blender"
+        self._versions: dict[str, tuple[int, ...]] = {}
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(SMALL)
@@ -52,7 +54,12 @@ class ExecutableSelector(QWidget):
         self.path_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         layout.addWidget(self.path_label)
         self.combo.currentIndexChanged.connect(self._changed)
-        self.combo.lineEdit().editingFinished.connect(self._changed)
+        self.combo.activated.connect(self._manual_selection)
+        self.combo.lineEdit().editingFinished.connect(self._manual_selection)
+
+    def _manual_selection(self) -> None:
+        self._auto_select_latest = False
+        self._changed()
 
     def path(self) -> str:
         index = self.combo.currentIndex()
@@ -69,6 +76,10 @@ class ExecutableSelector(QWidget):
         previous_path = self.path()
         self.combo.blockSignals(True)
         key = os.path.normcase(str(info.path))
+        if select:
+            self._auto_select_latest = False
+        if info.version:
+            self._versions[key] = tuple(int(part) for part in info.version.split("."))
         index = next(
             (i for i in range(self.combo.count()) if os.path.normcase(str(self.combo.itemData(i))) == key), -1
         )
@@ -82,6 +93,13 @@ class ExecutableSelector(QWidget):
             self.combo.setCurrentIndex(index)
         elif self.path() != previous_path:
             self.combo.setEditText(previous_path)
+        if self._auto_select_latest and self._versions:
+            latest = max(self._versions, key=self._versions.get)
+            latest_index = next(
+                i for i in range(self.combo.count())
+                if os.path.normcase(str(self.combo.itemData(i))) == latest
+            )
+            self.combo.setCurrentIndex(latest_index)
         self.combo.blockSignals(False)
         self._changed()
 
