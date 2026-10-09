@@ -32,10 +32,27 @@ On Linux/macOS, use `python3 -m venv .venv`, then
 `.venv/bin/python -m pip install -r requirements.txt` and
 `.venv/bin/python main.py`. Those platforms were not exercised here.
 
+## Build a Windows executable
+
+From the activated environment in the repository root:
+
+```powershell
+python -m pip install pyinstaller
+python -m PyInstaller --clean --noconfirm BlenderScriptLauncher.spec
+```
+
+Launch `dist/BlenderScriptLauncher/BlenderScriptLauncher.exe`. Distribute the
+entire `dist/BlenderScriptLauncher` folder, including `_internal`.
+The spec includes the stylesheet, SVG icons, script templates, and the
+shot-selection source used when generating batch scripts. These files are read
+from disk at runtime, so importing Python modules alone does not bundle them.
+Build from the spec to preserve these settings; passing `main.py` with the same
+`--name` regenerates the spec.
+
 ## Try the application
 
-1. The initial library is the `default` folder. Put your scripts there to load
-   them automatically. The bundled examples in `test_scripts` are not loaded by
+1. The initial library is the `scripts/default` folder. Put your scripts there to load
+   them automatically. The bundled examples in `scripts/test_scripts` are not loaded by
    default; add that folder in **Settings** if you want to use them. Select
    folders with **Browse**, use **+ Add library** to load more than one, and use
    **−** to remove a library. Each library is scanned one level deep;
@@ -58,7 +75,7 @@ On Linux/macOS, use `python3 -m venv .venv`, then
    its flag; for example, unchecking `Cache` emits `--no-cache`.
 6. For a script that edits the currently open Blender scene, choose **Batch .blend
    files** in **Run mode**. The script's own parameters remain visible alongside
-   the batch file-selection controls. `default/spawn_monkey_batch.py` is a
+   the batch file-selection controls. `scripts/default/spawn_monkey_batch.py` is a
    single-file example for this mode: it replaces scene objects with a named
    monkey, while the launcher opens and saves each selected file.
 7. Output filtering defaults to `[SCRIPT]`, with both displayed-output and saved
@@ -233,6 +250,30 @@ Those two switches are omitted for Python runs. Runtime, options, parameters,
 and filter settings are retained separately for each script during the session.
 Executables, scripts folder, and window geometry persist through `QSettings`.
 
+Script parameter values are saved when **Run Script** is pressed, after argument
+validation, to one central JSON file for all scripts:
+`%APPDATA%\SillyScripts\script_parameters.json` on Windows. On macOS this is
+`~/Library/Application Support/SillyScripts/script_parameters.json`; on Linux it
+is `$XDG_CONFIG_HOME/SillyScripts/script_parameters.json` (defaulting to
+`~/.config/SillyScripts/script_parameters.json`). Entries are keyed by normalized
+absolute script paths, so same-named scripts in different libraries remain
+independent. Entries include batch-selection parameter values, repeated fields,
+and numeric value-presence checkboxes. They are loaded automatically when the
+script is first loaded in an application
+session. Switching scripts retains any unsaved edits for that session; only
+another run updates the file. Runtime, Blender launch options, and output-filter
+settings retain their existing session-only behavior.
+
+The central file is written atomically, preserving other scripts' entries.
+Removed parameters or
+parameters whose type/action/choices/nargs changed use their parser defaults.
+Unreadable or corrupt configs are reported and defaults remain available. A
+corrupt central file is preserved rather than overwritten on Run. If the config
+directory is read-only, execution still works, but the application reports that
+its values could not be saved. Script libraries can be read-only. To reset a
+script, close the application and remove its entry from the central file, then
+reopen the application.
+
 ## Project structure
 
 ```text
@@ -252,26 +293,22 @@ silly-scripts/
 │   ├── script_templates.py
 │   ├── script_discovery.py
 │   ├── shot_selection.py
-│   ├── templates/
-│   │   ├── __init__.py
-│   │   ├── blank_script.py
-│   │   └── batch_script.py
 │   ├── arguments.py
 │   ├── parameter_widgets.py
+│   ├── parameter_config.py
 │   ├── string_widgets.py
 │   ├── parameters_panel.py
 │   ├── process_manager.py
 │   └── log_panel.py
 ├── logs/
 │   └── .gitkeep
-├── default/
-│   └── .gitkeep
-├── test_scripts/
-│   ├── basic_types.py
-│   ├── choices.py
-│   ├── output_test.py
-│   ├── required_values.py
-│   └── missing_parser.py
+├── scripts/
+│   ├── default/
+│   ├── test_scripts/
+│   └── templates/
+│       ├── blank_script.py
+│       ├── batch_script.py
+│       └── batch_runner.py
 └── tests/
     ├── __init__.py
     ├── support.py
@@ -285,8 +322,8 @@ silly-scripts/
 ```
 
 `batch_support.py` reuses the standalone template's parser and discovery rules;
-`templates/batch_runner.py` opens each selected blend, invokes the ordinary
-script entry point, and saves successful files. `default/spawn_monkey_batch.py`
+`scripts/templates/batch_runner.py` opens each selected blend, invokes the ordinary
+script entry point, and saves successful files. `scripts/default/spawn_monkey_batch.py`
 demonstrates a single-file script that can use this mode.
 
 `main_window.py` coordinates navigation and the three composed panels. It does
@@ -294,6 +331,9 @@ not own subprocess lifetimes. `script_inspector.py` is the single boundary for
 imports and argparse internals, returning neutral dataclasses from `models.py`.
 `parameter_widgets.py` builds controls from those models; `arguments.py` validates
 their values and constructs argument lists. No shell quoting is needed.
+`parameter_config.py` saves and restores per-script last-run values through
+one atomic JSON file in the user config directory, without depending on Qt or
+the process manager.
 `script_discovery.py` scans each selected library independently, reports missing
 directories without hiding scripts from other libraries, and supplies the folder
 name used by the sidebar category.
@@ -377,8 +417,10 @@ and removing rows, parser round trips, defaults, and session state restoration.
 - Stop controls the direct process. Arbitrary grandchildren are not managed.
   Interactive stdin is unsupported. Scripts run with their own folder as the
   working directory.
-- Per-script settings/log buffers survive selection changes, but only global
-  settings survive restart. Logs have no rotation or history browser. Keep the
+- Script and batch parameter values from the last run survive restart in
+  the central user JSON file. Moving a script changes its path key, so its saved
+  values do not follow automatically. Other per-script settings/log buffers survive selection
+  changes during the session. Logs have no rotation or history browser. Keep the
   project in a writable folder for `logs/`.
 - Python execution and Qt integration have been tested on Windows with Python
   3.12 and 3.13. Blender command construction is tested; actual Blender file

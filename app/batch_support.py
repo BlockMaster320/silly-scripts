@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-BATCH_TEMPLATE = Path(__file__).parent / "templates" / "batch_script.py"
-BATCH_RUNNER = Path(__file__).parent / "templates" / "batch_runner.py"
+BATCH_TEMPLATE = Path(__file__).resolve().parents[1] / "scripts" / "templates" / "batch_script.py"
+BATCH_RUNNER = Path(__file__).resolve().parents[1] / "scripts" / "templates" / "batch_runner.py"
 
 
 @dataclass(frozen=True)

@@ -1,1 +1,1 @@
-"""Blender Script Launcher application components."""
+"""SillyScripts application components."""

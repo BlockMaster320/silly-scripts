@@ -7,12 +7,14 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QComboBox, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget,
+    QComboBox, QFileDialog, QHBoxLayout,
+    QLabel, QLineEdit, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
 from .models import ExecutableInfo
 from .settings import AppSettings
+from .ui.components import Section
+from .ui.theme import CONTROL_HEIGHT, PAGE, SECTION, SMALL, style_button
 
 
 class ExecutableSelector(QWidget):
@@ -21,22 +23,34 @@ class ExecutableSelector(QWidget):
     def __init__(self, kind: str, selected: str) -> None:
         super().__init__()
         self.kind = kind
-        layout = QHBoxLayout(self)
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(SMALL)
+        row = QHBoxLayout()
+        row.setSpacing(SMALL)
         self.combo = QComboBox()
         self.combo.setEditable(True)
-        self.combo.setMinimumContentsLength(28)
+        self.combo.setMinimumContentsLength(20)
         self.combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.combo.setPlaceholderText(f"Select or browse for {kind}")
+        self.combo.lineEdit().setPlaceholderText(f"Select or browse for {kind}")
         self.combo.setAccessibleName(f"{kind} executable")
         if selected:
-            self.combo.addItem(selected, selected)
+            self.combo.addItem(f"{kind} · {Path(selected).name}", selected)
             self.combo.setCurrentIndex(0)
         browse = QPushButton("Browse…")
+        style_button(browse, "folder")
         browse.clicked.connect(self._browse)
-        layout.addWidget(self.combo, 1)
-        layout.addWidget(browse)
+        row.addWidget(self.combo, 1)
+        row.addWidget(browse)
+        layout.addLayout(row)
+        self.path_label = QLabel(selected or "No executable selected")
+        self.path_label.setProperty("role", "help")
+        self.path_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.path_label.setWordWrap(True)
+        self.path_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        layout.addWidget(self.path_label)
         self.combo.currentIndexChanged.connect(self._changed)
         self.combo.lineEdit().editingFinished.connect(self._changed)
 
@@ -48,6 +62,7 @@ class ExecutableSelector(QWidget):
 
     def _changed(self) -> None:
         self.combo.setToolTip(self.path())
+        self.path_label.setText(self.path() or "No executable selected")
         self.selected.emit(self.path())
 
     def add_executable(self, info: ExecutableInfo, select: bool = False) -> None:
@@ -58,10 +73,10 @@ class ExecutableSelector(QWidget):
             (i for i in range(self.combo.count()) if os.path.normcase(str(self.combo.itemData(i))) == key), -1
         )
         if index < 0:
-            self.combo.addItem(info.label, str(info.path))
+            self.combo.addItem(f"{info.kind} {info.version}" if info.version else f"{info.kind} · {info.path.name}", str(info.path))
             index = self.combo.count() - 1
         else:
-            self.combo.setItemText(index, info.label)
+            self.combo.setItemText(index, f"{info.kind} {info.version}" if info.version else f"{info.kind} · {info.path.name}")
         self.combo.setItemData(index, str(info.path), Qt.ItemDataRole.ToolTipRole)
         if select or not previous_path or os.path.normcase(previous_path) == key:
             self.combo.setCurrentIndex(index)
@@ -87,13 +102,17 @@ class ScriptLibraryRow(QWidget):
         super().__init__()
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(SMALL)
         self.folder_edit = QLineEdit(str(folder))
         self.folder_edit.setReadOnly(True)
         self.folder_edit.setAccessibleName("Scripts folder")
         browse = QPushButton("Browse…")
+        style_button(browse, "folder")
         browse.clicked.connect(self._browse)
-        self.remove_button = QPushButton("−")
-        self.remove_button.setFixedWidth(30)
+        self.remove_button = QPushButton()
+        style_button(self.remove_button, "minus", "icon")
+        self.remove_button.setFixedWidth(CONTROL_HEIGHT)
+        self.remove_button.setToolTip("Remove script library")
         self.remove_button.setAccessibleName("Remove script library")
         self.remove_button.clicked.connect(lambda: self.remove_requested.emit(self))
         self.folder_edit.editingFinished.connect(
@@ -122,19 +141,35 @@ class SettingsPanel(QWidget):
         super().__init__()
         self.settings = settings
         self.folder_rows: list[ScriptLibraryRow] = []
-        layout = QVBoxLayout(self)
-        folder_group = QGroupBox("Script library")
-        folder_layout = QVBoxLayout(folder_group)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, SECTION, 0, 0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        content = QWidget()
+        content.setObjectName("pageContent")
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(0, 0, SMALL, SECTION)
+        layout.setSpacing(PAGE)
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
+        folder_group = Section("Script libraries")
+        folder_layout = QVBoxLayout(folder_group.body)
+        folder_layout.setContentsMargins(0, SMALL, 0, 0)
+        folder_layout.setSpacing(SMALL)
         self.libraries_layout = QVBoxLayout()
         self.libraries_layout.setContentsMargins(0, 0, 0, 0)
+        self.libraries_layout.setSpacing(SMALL)
         folder_layout.addLayout(self.libraries_layout)
         for folder in settings.scripts_folders:
             self._append_library_row(folder)
         library_actions = QHBoxLayout()
-        self.add_library_button = QPushButton("+ Add library")
+        self.add_library_button = QPushButton("Add library")
+        style_button(self.add_library_button, "plus")
         self.add_library_button.clicked.connect(self._add_library)
         library_actions.addWidget(self.add_library_button)
         refresh = QPushButton("Refresh Scripts")
+        style_button(refresh, "refresh")
         refresh.clicked.connect(self._refresh)
         library_actions.addWidget(refresh)
         library_actions.addStretch(1)
@@ -142,18 +177,22 @@ class SettingsPanel(QWidget):
         note = QLabel("Only direct .py files in selected folders are scanned. __init__.py is ignored.\n"
                       "Use trusted scripts: inspection imports each script and calls create_parser().")
         note.setWordWrap(True)
+        note.setProperty("role", "help")
         folder_layout.addWidget(note)
         layout.addWidget(folder_group)
-        executables = QGroupBox("Executables")
-        executable_layout = QFormLayout(executables)
         self.selectors: dict[str, ExecutableSelector] = {}
         for kind in ("Blender", "Python"):
+            group = Section(kind)
+            executable_layout = QVBoxLayout(group.body)
+            executable_layout.setContentsMargins(0, SMALL, 0, 0)
+            executable_layout.setSpacing(SMALL)
             selector = ExecutableSelector(kind, settings.executable(kind))
             selector.selected.connect(lambda path, kind=kind: self._executable_selected(kind, path))
             self.selectors[kind] = selector
-            executable_layout.addRow(kind, selector)
-        layout.addWidget(executables)
+            executable_layout.addWidget(selector)
+            layout.addWidget(group)
         self.message = QLabel()
+        self.message.setProperty("role", "help")
         self.message.setTextFormat(Qt.TextFormat.PlainText)
         self.message.setWordWrap(True)
         layout.addWidget(self.message)

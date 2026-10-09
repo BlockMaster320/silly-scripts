@@ -11,9 +11,10 @@ from PySide6.QtTest import QTest
 
 from app.main_window import MainWindow
 from app.models import ExecutableInfo
+from app.parameter_config import ParameterConfigStore
 from app.settings import AppSettings
 
-EXAMPLES = Path(__file__).resolve().parents[1] / "test_scripts"
+EXAMPLES = Path(__file__).resolve().parents[1] / "scripts" / "test_scripts"
 
 
 class WindowTests(unittest.TestCase):
@@ -26,7 +27,8 @@ class WindowTests(unittest.TestCase):
         store = QSettings(str(self.settings_path), QSettings.Format.IniFormat)
         self.settings = AppSettings(self.root, store)
         self.settings.set_executable("Python", sys.executable)
-        self.window = MainWindow(self.root, self.settings, auto_discover=False)
+        self.window = MainWindow(self.root, self.settings, auto_discover=False,
+                                 parameter_configs=ParameterConfigStore(self.root / "script_parameters.json"))
         self.window.processes.stop_timeout_ms = 100
         self.window.show()
         APP.processEvents()

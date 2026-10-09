@@ -10,7 +10,7 @@ TemplateKind = Literal["blank", "batch"]
 
 def template_source(kind: TemplateKind) -> str:
     filename = {"blank": "blank_script.py", "batch": "batch_script.py"}[kind]
-    source = (Path(__file__).parent / "templates" / filename).read_text(encoding="utf-8")
+    source = (Path(__file__).resolve().parents[1] / "scripts" / "templates" / filename).read_text(encoding="utf-8")
     if kind == "batch":
         # Embed the same validator used by the launcher so new scripts have no
         # dependency on the app package or the launcher's installation folder.

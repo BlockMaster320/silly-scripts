@@ -6,13 +6,14 @@ import math
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout,
-    QLabel, QLineEdit, QSpinBox, QVBoxLayout, QWidget,
+    QCheckBox, QComboBox, QDoubleSpinBox, QGridLayout, QHBoxLayout,
+    QLabel, QLayout, QLineEdit, QSizePolicy, QSpinBox, QVBoxLayout, QWidget,
 )
 
 from .arguments import build_script_arguments
 from .models import ParameterValue, ScriptParameter
 from .string_widgets import FilePicker, FolderPicker, MultiValueInputs, StringInputs
+from .ui.theme import CONTROL_HEIGHT, LABEL_WIDTH, SECTION, SMALL, TINY
 
 
 class ParameterEditor(QWidget):
@@ -20,12 +21,15 @@ class ParameterEditor(QWidget):
 
     def __init__(self, parameter: ScriptParameter, saved: ParameterValue | None = None) -> None:
         super().__init__()
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         self.parameter = parameter
         self.include: QCheckBox | None = None
         self.string_inputs: StringInputs | None = None
         self.multiple_inputs: MultiValueInputs | None = None
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(SMALL)
+        layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         boolean = parameter.action_type in ("store_true", "store_false", "boolean_optional")
         default = parameter.default
         initial = saved.value if saved else None if parameter.action_type == "append" else default
@@ -73,7 +77,7 @@ class ParameterEditor(QWidget):
             self.control = control
         elif parameter.parameter_type is int:
             if not parameter.required and default is None:
-                control = QLineEdit()
+                control = QLineEdit("" if initial is None else str(initial))
                 control.setPlaceholderText("Optional")
                 control.textChanged.connect(self.changed)
             else:
@@ -87,7 +91,7 @@ class ParameterEditor(QWidget):
             self.control = control
         elif parameter.parameter_type is float:
             if not parameter.required and default is None:
-                control = QLineEdit()
+                control = QLineEdit("" if initial is None else str(initial))
                 control.setPlaceholderText("Optional")
                 control.textChanged.connect(self.changed)
             else:
@@ -126,7 +130,7 @@ class ParameterEditor(QWidget):
             self.include.toggled.connect(self.changed)
             layout.addWidget(self.include)
         self.control.setAccessibleName(parameter.label)
-        layout.addWidget(self.string_inputs or self.multiple_inputs or self.control, 1)
+        layout.addWidget(self.string_inputs or self.multiple_inputs or self.control, 1, Qt.AlignmentFlag.AlignTop)
         cli_name = ", ".join(parameter.option_strings) or f"{parameter.name} (positional)"
         self.setToolTip(f"{cli_name}\n{parameter.help or ''}")
 
@@ -159,29 +163,64 @@ class ParameterForm(QWidget):
         super().__init__()
         self.parameters = parameters
         self.editors: dict[str, ParameterEditor] = {}
-        layout = QFormLayout(self)
-        layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
-        layout.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        self.labels: dict[str, QLabel] = {}
+        self.fields: dict[str, QWidget] = {}
+        # Keep the complete field (repeatable inputs and help) in a single grid
+        # cell. QFormLayout's wrapping/height-for-width cache can reposition the
+        # next field before the preceding field has finished shrinking.
+        layout = QGridLayout(self)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setHorizontalSpacing(SECTION)
+        layout.setVerticalSpacing(SECTION)
+        layout.setColumnStretch(1, 1)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         if not parameters:
-            layout.addRow(QLabel("This script does not define any parameters."))
-        for parameter in parameters:
+            layout.addWidget(QLabel("This script does not define any parameters."), 0, 0, 1, 2)
+        for row, parameter in enumerate(parameters):
             editor = ParameterEditor(parameter, saved.get(parameter.name))
-            editor.changed.connect(self.changed)
             self.editors[parameter.name] = editor
             label = QLabel(parameter.label + (" *" if parameter.required else ""))
+            label.setMinimumHeight(CONTROL_HEIGHT)
+            label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+            label.setMinimumWidth(LABEL_WIDTH)
+            label.setWordWrap(True)
+            label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             if parameter.required:
-                label.setStyleSheet("font-weight: 600;")
+                label.setProperty("role", "required")
             label.setBuddy(editor.control)
             wrapper = QWidget()
+            wrapper.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
             field_layout = QVBoxLayout(wrapper)
-            field_layout.setContentsMargins(0, 0, 0, 8)
-            field_layout.addWidget(editor)
-            if parameter.help:
+            field_layout.setContentsMargins(0, 0, 0, 0)
+            field_layout.setSpacing(TINY)
+            field_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
+            field_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+            field_layout.addWidget(editor, 0, Qt.AlignmentFlag.AlignTop)
+            if parameter.help and len(parameter.help) <= 160:
                 help_label = QLabel(parameter.help)
+                help_label.setProperty("role", "help")
                 help_label.setWordWrap(True)
                 help_label.setTextFormat(Qt.TextFormat.PlainText)
                 field_layout.addWidget(help_label)
-            layout.addRow(label, wrapper)
+            self.labels[parameter.name] = label
+            self.fields[parameter.name] = wrapper
+            layout.addWidget(label, row, 0, Qt.AlignmentFlag.AlignTop)
+            layout.addWidget(wrapper, row, 1)
+            editor.changed.connect(lambda editor=editor, wrapper=wrapper: self._refresh_row(editor, wrapper))
+
+    def _refresh_row(self, editor: ParameterEditor, wrapper: QWidget) -> None:
+        """Propagate repeatable-control height changes through the entire row.
+
+        Invalidate from the inside out so the grid measures the complete field,
+        including wrapped help, after a repeatable input is added or removed.
+        """
+        for widget in (editor, wrapper, self):
+            widget.layout().invalidate()
+            widget.layout().activate()
+            widget.updateGeometry()
+        self.changed.emit()
 
     def values(self) -> dict[str, ParameterValue]:
         return {name: editor.value() for name, editor in self.editors.items()}

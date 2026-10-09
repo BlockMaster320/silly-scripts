@@ -11,7 +11,7 @@ from app.parameter_widgets import ParameterForm
 from app.script_inspector import ScriptInspector
 from app.string_widgets import FilePicker, FolderPicker
 
-EXAMPLES = Path(__file__).resolve().parents[1] / "test_scripts"
+EXAMPLES = Path(__file__).resolve().parents[1] / "scripts" / "test_scripts"
 
 
 class ParameterTests(unittest.TestCase):

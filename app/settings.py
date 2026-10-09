@@ -8,7 +8,9 @@ from PySide6.QtCore import QByteArray, QSettings
 class AppSettings:
     def __init__(self, project_dir: Path, store: QSettings | None = None) -> None:
         self.project_dir = project_dir
-        self.store = store if store is not None else QSettings()
+        # Retain the existing registry/preferences location after the visible
+        # application rename, so saved libraries, runtimes and geometry survive.
+        self.store = store if store is not None else QSettings("SillyScripts", "Silly Scripts Launcher")
 
     @property
     def scripts_folder(self) -> Path:
@@ -23,11 +25,18 @@ class AppSettings:
     def scripts_folders(self) -> list[Path]:
         saved = self.store.value("scripts_folders", None)
         if saved is None:
-            saved = self.store.value("scripts_folder", str(self.project_dir / "default"))
+            saved = self.store.value("scripts_folder", str(self.project_dir / "scripts" / "default"))
         if isinstance(saved, (str, Path)):
             saved = [saved]
         folders = [Path(str(value)) for value in saved or []]
-        return folders or [self.project_dir / "default"]
+        # Follow bundled libraries relocated into scripts, preserving custom paths.
+        for index, folder in enumerate(folders):
+            for name in ("default", "test_scripts"):
+                legacy = self.project_dir / name
+                relocated = self.project_dir / "scripts" / name
+                if folder.resolve() == legacy.resolve() and not legacy.exists() and relocated.is_dir():
+                    folders[index] = relocated
+        return folders or [self.project_dir / "scripts" / "default"]
 
     def set_scripts_folders(self, folders: list[Path]) -> None:
         if not folders:

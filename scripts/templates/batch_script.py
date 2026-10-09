@@ -185,7 +185,7 @@ def purge_unused_data(keep_linked: bool) -> int:
 
 
 def process_file(path: Path, purge_data: bool = False) -> None:
-    import bpy  # import only at execution time, never during launcher inspection
+    import bpy  # import bpy at execution time if possible
 
     # Open the .blend file
     print(f"{INFO_PREFIX} Opening {path}", flush=True)

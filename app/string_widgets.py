@@ -7,11 +7,12 @@ from typing import Any
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QComboBox, QFileDialog, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QVBoxLayout, QWidget,
+    QComboBox, QFileDialog, QHBoxLayout, QLabel, QLayout, QLineEdit,
+    QPushButton, QSizePolicy, QVBoxLayout, QWidget,
 )
 
 from .models import ScriptParameter
+from .ui.theme import CONTROL_HEIGHT, SMALL, style_button
 
 
 class FolderPicker(QWidget):
@@ -23,11 +24,14 @@ class FolderPicker(QWidget):
         self.label = label
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(SMALL)
         self.path_label = QLabel()
+        self.path_label.setProperty("role", "path")
         self.path_label.setTextFormat(Qt.TextFormat.PlainText)
         self.path_label.setWordWrap(True)
         self.path_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.browse_button = QPushButton("Select folder…")
+        self.browse_button = QPushButton("Select Folder")
+        style_button(self.browse_button, "folder")
         self.browse_button.setAccessibleName(f"Select {label} folder")
         self.browse_button.clicked.connect(self._browse)
         layout.addWidget(self.path_label, 1)
@@ -64,11 +68,14 @@ class FilePicker(QWidget):
         self.label = label
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(SMALL)
         self.path_label = QLabel()
+        self.path_label.setProperty("role", "path")
         self.path_label.setTextFormat(Qt.TextFormat.PlainText)
         self.path_label.setWordWrap(True)
         self.path_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.browse_button = QPushButton("Select file…")
+        self.browse_button = QPushButton("Select File")
+        style_button(self.browse_button, "file-code")
         self.browse_button.setAccessibleName(f"Select {label} file")
         self.browse_button.clicked.connect(self._browse)
         layout.addWidget(self.path_label, 1)
@@ -97,16 +104,22 @@ class MultiValueInputs(QWidget):
 
     def __init__(self, parameter: ScriptParameter, initial: Any) -> None:
         super().__init__()
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         self.parameter = parameter
         self.controls: list[QWidget] = []
         self.rows: list[QWidget] = []
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(SMALL)
+        layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         self.rows_layout = QVBoxLayout()
         self.rows_layout.setContentsMargins(0, 0, 0, 0)
+        self.rows_layout.setSpacing(SMALL)
         layout.addLayout(self.rows_layout)
-        self.add_button = QPushButton("+")
-        self.add_button.setFixedWidth(30)
+        self.add_button = QPushButton()
+        style_button(self.add_button, "plus", "icon")
+        self.add_button.setFixedWidth(CONTROL_HEIGHT)
+        self.add_button.setToolTip(f"Add {parameter.label} value")
         self.add_button.setAccessibleName(f"Add {parameter.label} value")
         self.add_button.clicked.connect(lambda: self.add_value())
         values = initial if isinstance(initial, (list, tuple)) else [initial]
@@ -122,6 +135,8 @@ class MultiValueInputs(QWidget):
         row = QWidget()
         row_layout = QHBoxLayout(row)
         row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(SMALL)
+        row_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         if parameter.choices is not None:
             control = QComboBox()
             control.setPlaceholderText("Select a value…")
@@ -154,14 +169,20 @@ class MultiValueInputs(QWidget):
         if not self.controls:
             row_layout.addWidget(self.add_button)
         else:
-            remove = QPushButton("−")
-            remove.setFixedWidth(30)
+            remove = QPushButton()
+            style_button(remove, "minus", "icon")
+            remove.setFixedWidth(CONTROL_HEIGHT)
+            remove.setToolTip(f"Remove {parameter.label} value")
             remove.setAccessibleName(f"Remove {parameter.label} value")
             remove.clicked.connect(lambda: self._remove(row, control))
             row_layout.addWidget(remove)
         self.controls.append(control)
         self.rows.append(row)
         self.rows_layout.addWidget(row)
+        self.rows_layout.activate()
+        self.layout().invalidate()
+        self.layout().activate()
+        self.updateGeometry()
         self.changed.emit()
 
     def _remove(self, row: QWidget, control: QWidget) -> None:
@@ -171,7 +192,9 @@ class MultiValueInputs(QWidget):
         row.hide()
         row.deleteLater()
         self.rows_layout.invalidate()
+        self.rows_layout.activate()
         self.layout().invalidate()
+        self.layout().activate()
         self.updateGeometry()
         self.changed.emit()
 
@@ -194,20 +217,26 @@ class StringInputs(QWidget):
 
     def __init__(self, parameter: ScriptParameter, initial: Any) -> None:
         super().__init__()
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         self.parameter = parameter
         self.controls: list[QWidget] = []
         self._rows: list[QWidget] = []
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(SMALL)
+        layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         self.rows_layout = QVBoxLayout()
         self.rows_layout.setContentsMargins(0, 0, 0, 0)
+        self.rows_layout.setSpacing(SMALL)
         layout.addLayout(self.rows_layout)
-        self.add_button = QPushButton("+")
-        self.add_button.setFixedWidth(30)
+        self.add_button = QPushButton()
+        style_button(self.add_button, "plus", "icon")
+        self.add_button.setFixedWidth(CONTROL_HEIGHT)
         self.add_button.setToolTip(f"Add another {parameter.label} value")
         self.add_button.setAccessibleName(f"Add {parameter.label} value")
         self.add_button.clicked.connect(lambda: self.add_value())
         self.hint = QLabel()
+        self.hint.setProperty("role", "help")
         self.hint.setWordWrap(True)
         layout.addWidget(self.hint)
         values = initial if isinstance(initial, (list, tuple)) else [initial]
@@ -222,7 +251,9 @@ class StringInputs(QWidget):
         row = QWidget()
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(SMALL)
         parameter = self.parameter
+        layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         if parameter.choices is not None:
             control = QComboBox()
             control.setPlaceholderText("Select a value…")
@@ -242,8 +273,10 @@ class StringInputs(QWidget):
         if not self.controls:
             layout.addWidget(self.add_button)
         else:
-            remove = QPushButton("−")
-            remove.setFixedWidth(30)
+            remove = QPushButton()
+            style_button(remove, "minus", "icon")
+            remove.setFixedWidth(CONTROL_HEIGHT)
+            remove.setToolTip(f"Remove {parameter.label} value")
             remove.setAccessibleName(f"Remove {parameter.label} value")
             remove.clicked.connect(lambda: self._remove(row, control))
             layout.addWidget(remove)
@@ -251,6 +284,10 @@ class StringInputs(QWidget):
         self._rows.append(row)
         self.rows_layout.addWidget(row)
         self._update_hint()
+        self.rows_layout.activate()
+        self.layout().invalidate()
+        self.layout().activate()
+        self.updateGeometry()
         self.changed.emit()
 
     def _remove(self, row: QWidget, control: QWidget) -> None:
@@ -264,7 +301,9 @@ class StringInputs(QWidget):
         row.deleteLater()
         self._update_hint()
         self.rows_layout.invalidate()
+        self.rows_layout.activate()
         self.layout().invalidate()
+        self.layout().activate()
         self.updateGeometry()
         self.changed.emit()
 

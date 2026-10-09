@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QFormLayout, QGroupBox, QHBoxLayout,
+    QCheckBox, QComboBox, QFormLayout, QHBoxLayout,
     QLabel, QLineEdit, QPlainTextEdit, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
@@ -12,6 +12,8 @@ from .arguments import ParameterValidationError, build_process_arguments, build_
 from .batch_support import BATCH_RUNNER
 from .models import ScriptInfo, ScriptParameter, ScriptRuntimeState
 from .parameter_widgets import ParameterForm
+from .ui.components import Section
+from .ui.theme import LABEL_WIDTH, PAGE, SECTION, SMALL, TINY, monospace_font, style_button
 
 
 class ParametersPanel(QWidget):
@@ -30,6 +32,8 @@ class ParametersPanel(QWidget):
         self.batch_error_label: QLabel | None = None
         self.executable = ""
         self.setLayout(QVBoxLayout())
+        self.layout().setContentsMargins(0, SECTION, 0, 0)
+        self.layout().setSpacing(SECTION)
         self.set_script(None, None)
 
     def set_script(self, script: ScriptInfo | None, state: ScriptRuntimeState | None) -> None:
@@ -40,13 +44,19 @@ class ParametersPanel(QWidget):
         self.script, self.state, self.form = script, state, None
         content = QWidget()
         layout = QVBoxLayout(content)
+        content.setObjectName("pageContent")
+        layout.setContentsMargins(0, 0, SMALL, SECTION)
+        layout.setSpacing(PAGE)
         scroll = QScrollArea()
+        self.scroll = scroll
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         scroll.setWidgetResizable(True)
         scroll.setWidget(content)
         self.layout().addWidget(scroll)
         if not script or not state:
             label = QLabel("Select a script from the sidebar.\nChoose a script folder in Settings to load your own scripts.")
             label.setWordWrap(True)
+            label.setProperty("role", "muted")
             layout.addWidget(label)
             layout.addStretch(1)
             return
@@ -54,45 +64,60 @@ class ParametersPanel(QWidget):
         if state.batch_mode:
             state.runtime = "Blender"
 
-        title = QLabel(script.name)
-        title.setTextFormat(Qt.TextFormat.PlainText)
-        title.setStyleSheet("font-size: 20px; font-weight: 600;")
-        layout.addWidget(title)
-        path_label = QLabel(str(script.path))
-        path_label.setTextFormat(Qt.TextFormat.PlainText)
-        path_label.setWordWrap(True)
-        layout.addWidget(path_label)
-        self.execution_group = QGroupBox("Execution")
-        execution_layout = QFormLayout(self.execution_group)
+        self.execution_group = Section("Execution")
+        execution_layout = QFormLayout(self.execution_group.body)
+        execution_layout.setContentsMargins(0, SMALL, 0, 0)
+        execution_layout.setHorizontalSpacing(SECTION)
+        execution_layout.setVerticalSpacing(SMALL)
+        execution_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        execution_layout.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         self.runtime = QComboBox()
         self.runtime.addItems(["Blender", "Python"])
+        self.runtime.setAccessibleName("Runtime")
         self.runtime.setCurrentText(state.runtime)
         self.runtime.currentTextChanged.connect(self._runtime_changed)
-        execution_layout.addRow("Runtime", self.runtime)
+        runtime_label = QLabel("Runtime")
+        runtime_label.setMinimumWidth(LABEL_WIDTH)
+        runtime_label.setBuddy(self.runtime)
+        execution_layout.addRow(runtime_label, self.runtime)
         self.run_mode = QComboBox()
-        self.run_mode.addItems(["Single file", "Batch .blend files"])
+        self.run_mode.addItems(["Single run", "Batch mode"])
+        self.run_mode.setAccessibleName("Run mode")
         self.run_mode.setCurrentIndex(1 if state.batch_mode else 0)
         self.run_mode.currentIndexChanged.connect(self._run_mode_changed)
         if self.batch_parameters is None:
-            self.run_mode.setItemText(1, "Batch .blend files (unavailable)")
+            self.run_mode.setItemText(1, "Batch mode (unavailable)")
             self.run_mode.setEnabled(False)
-        execution_layout.addRow("Run mode", self.run_mode)
+        mode_label = QLabel("Run mode")
+        mode_label.setMinimumWidth(LABEL_WIDTH)
+        mode_label.setBuddy(self.run_mode)
+        execution_layout.addRow(mode_label, self.run_mode)
+        layout.addWidget(self.execution_group)
+        self.blender_group = Section("Blender options")
+        blender_layout = QVBoxLayout(self.blender_group.body)
+        blender_layout.setContentsMargins(0, SMALL, 0, 0)
+        blender_layout.setSpacing(TINY)
         self.background = QCheckBox("Run Blender in background")
         self.background.setChecked(state.blender_background)
         self.background.toggled.connect(self._background_changed)
-        execution_layout.addRow(self.background)
+        blender_layout.addWidget(self.background)
         self.resync = QCheckBox("Disable library override auto resync")
         self.resync.setChecked(state.disable_override_resync)
         self.resync.toggled.connect(self._resync_changed)
-        execution_layout.addRow(self.resync)
-        layout.addWidget(self.execution_group)
+        blender_layout.addWidget(self.resync)
+        layout.addWidget(self.blender_group)
 
-        self.parameter_group = QGroupBox("Script parameters · * required")
-        parameter_layout = QVBoxLayout(self.parameter_group)
+        self.parameter_group = Section("Script parameters")
+        parameter_layout = QVBoxLayout(self.parameter_group.body)
+        parameter_layout.setContentsMargins(0, SMALL, 0, 0)
+        parameter_layout.setSpacing(SMALL)
+        required_note = QLabel("Fields marked * are required")
+        required_note.setProperty("role", "help")
+        parameter_layout.addWidget(required_note)
         self.error_label = QLabel()
         self.error_label.setTextFormat(Qt.TextFormat.PlainText)
         self.error_label.setWordWrap(True)
-        self.error_label.setStyleSheet("color: #b42318;")
+        self.error_label.setProperty("role", "error")
         if not script.inspection_error:
             try:
                 self.form = ParameterForm(script.parameters, state.parameter_values)
@@ -101,11 +126,13 @@ class ParametersPanel(QWidget):
             except (ValueError, TypeError, OverflowError) as exc:
                 script.inspection_error = f"Cannot build parameter controls: {exc}"
         self.error_label.setText(script.inspection_error or "")
+        self.error_label.setVisible(bool(script.inspection_error))
         parameter_layout.addWidget(self.error_label)
         layout.addWidget(self.parameter_group)
 
-        self.batch_group = QGroupBox("Batch file selection")
-        batch_layout = QVBoxLayout(self.batch_group)
+        self.batch_group = Section("Batch file selection")
+        batch_layout = QVBoxLayout(self.batch_group.body)
+        batch_layout.setContentsMargins(0, SMALL, 0, 0)
         if self.batch_parameters is not None:
             self.batch_form = ParameterForm(self.batch_parameters, state.batch_parameter_values)
             self.batch_form.changed.connect(self._values_changed)
@@ -113,7 +140,8 @@ class ParametersPanel(QWidget):
             self.batch_error_label = QLabel()
             self.batch_error_label.setTextFormat(Qt.TextFormat.PlainText)
             self.batch_error_label.setWordWrap(True)
-            self.batch_error_label.setStyleSheet("color: #b42318;")
+            self.batch_error_label.setProperty("role", "error")
+            self.batch_error_label.hide()
             batch_layout.addWidget(self.batch_error_label)
         else:
             error = QLabel(f"Batch mode is unavailable: {self.batch_error or 'could not load the batch selection options.'}")
@@ -122,12 +150,20 @@ class ParametersPanel(QWidget):
         self.batch_group.setVisible(state.batch_mode)
         layout.addWidget(self.batch_group)
 
-        self.filter_group = QGroupBox("Output filtering")
-        filter_layout = QFormLayout(self.filter_group)
+        self.filter_group = Section("Output filtering")
+        filter_layout = QFormLayout(self.filter_group.body)
+        filter_layout.setContentsMargins(0, SMALL, 0, 0)
+        filter_layout.setHorizontalSpacing(SECTION)
+        filter_layout.setVerticalSpacing(SMALL)
+        filter_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        filter_layout.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         self.output_filter = QLineEdit(state.output_filter)
         self.output_filter.setPlaceholderText("For example: [SCRIPT]")
         self.output_filter.textChanged.connect(lambda text: setattr(state, "output_filter", text))
-        filter_layout.addRow("Output filter", self.output_filter)
+        output_label = QLabel("Output filter")
+        output_label.setMinimumWidth(LABEL_WIDTH)
+        output_label.setBuddy(self.output_filter)
+        filter_layout.addRow(output_label, self.output_filter)
         self.filter_enabled = QCheckBox("Filter displayed output")
         self.filter_enabled.setChecked(state.filter_enabled)
         self.filter_enabled.toggled.connect(lambda value: setattr(state, "filter_enabled", value))
@@ -136,31 +172,47 @@ class ParametersPanel(QWidget):
         self.filter_log_enabled.setChecked(state.filter_log_enabled)
         self.filter_log_enabled.toggled.connect(lambda value: setattr(state, "filter_log_enabled", value))
         filter_layout.addRow(self.filter_log_enabled)
-        filter_note = QLabel("Case-insensitive substring match. Log filtering applies to output received during the next run.")
+        filter_note = QLabel("Log filtering applies to output received during the next run.")
         filter_note.setWordWrap(True)
+        filter_note.setProperty("role", "help")
         filter_layout.addRow(filter_note)
         layout.addWidget(self.filter_group)
 
-        command_group = QGroupBox("Visual console · PowerShell preview")
-        command_layout = QVBoxLayout(command_group)
+        command_group = Section("Command preview")
+        command_layout = QVBoxLayout(command_group.body)
+        command_layout.setContentsMargins(0, SMALL, 0, 0)
+        command_layout.setSpacing(SMALL)
+        command_note = QLabel("PowerShell syntax · updates as you edit")
+        command_note.setProperty("role", "help")
+        command_layout.addWidget(command_note)
         self.command_preview = QPlainTextEdit()
+        self.command_preview.setProperty("role", "console")
+        self.command_preview.setFont(monospace_font())
+        self.command_preview.setAccessibleName("Command preview")
         self.command_preview.setReadOnly(True)
         self.command_preview.setMaximumBlockCount(200)
-        self.command_preview.setMinimumHeight(120)
+        self.command_preview.setMinimumHeight(144)
+        self.command_preview.setMaximumHeight(192)
         self.command_preview.setPlaceholderText("The command preview will appear here.")
         command_layout.addWidget(self.command_preview)
         layout.addWidget(command_group)
         footer = QWidget()
+        footer.setObjectName("actionFooter")
         buttons = QHBoxLayout(footer)
-        buttons.setContentsMargins(0, 0, 0, 0)
-        self.run_button = QPushButton("Run")
+        buttons.setContentsMargins(0, SECTION, 0, 0)
+        buttons.setSpacing(SMALL)
+        self.run_button = QPushButton("Run Script")
+        style_button(self.run_button, "play", "primary")
         self.run_button.clicked.connect(self.run_requested)
         self.stop_button = QPushButton("Stop")
+        style_button(self.stop_button, "stop", "danger")
         self.stop_button.clicked.connect(self.stop_requested)
-        buttons.addWidget(self.run_button)
-        buttons.addWidget(self.stop_button)
         self.status = QLabel()
+        self.status.setWordWrap(True)
+        self.status.setProperty("role", "muted")
         buttons.addWidget(self.status, 1)
+        buttons.addWidget(self.stop_button)
+        buttons.addWidget(self.run_button)
         self.layout().addWidget(footer)
         layout.addStretch(1)
         self.update_state()
@@ -305,6 +357,7 @@ class ParametersPanel(QWidget):
             return
         running = self.state.is_running
         self.execution_group.setEnabled(not running)
+        self.blender_group.setEnabled(not running and self.state.runtime == "Blender")
         self.run_mode.setEnabled(not running and self.batch_parameters is not None)
         self.runtime.setEnabled(not running and not self.state.batch_mode)
         self.parameter_group.setEnabled(not running)
@@ -322,5 +375,7 @@ class ParametersPanel(QWidget):
         if self.script:
             if self.state and self.state.batch_mode and self.batch_error_label:
                 self.batch_error_label.setText(message)
+                self.batch_error_label.setVisible(bool(message))
             else:
                 self.error_label.setText(message)
+                self.error_label.setVisible(bool(message))

@@ -5,7 +5,7 @@ from pathlib import Path
 from app.script_discovery import ScriptDiscoveryError, discover_scripts
 from app.script_inspector import ScriptInspector
 
-EXAMPLES = Path(__file__).resolve().parents[1] / "test_scripts"
+EXAMPLES = Path(__file__).resolve().parents[1] / "scripts" / "test_scripts"
 
 
 class InspectionTests(unittest.TestCase):
@@ -67,7 +67,7 @@ class InspectionTests(unittest.TestCase):
         self.assertEqual(info.parameters[0].name, "name")
 
     def test_spawn_monkey_example_inspects_with_global_bpy(self) -> None:
-        info = self.inspector.inspect(Path(__file__).resolve().parents[1] / "default" / "spawn_monkey.py")
+        info = self.inspector.inspect(Path(__file__).resolve().parents[1] / "scripts" / "default" / "spawn_monkey.py")
         self.assertIsNone(info.inspection_error)
         self.assertEqual(info.parameters[0].name, "monkey_name")
 
