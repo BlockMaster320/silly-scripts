@@ -109,7 +109,9 @@ All string parameters, including string choices and shot filters, have a **+**
 button for adding rows and a **−** button for removing additional rows. Rows and
 selected folders are retained independently for each script during the session.
 Empty extra rows are ignored. Arguments using `action="append"` receive repeated
-flags, while `nargs="+"`, `"*"`, or a fixed count receive multiple values after
+flags for strings, integers, floats, paths, and choices. Each append flag takes
+one value; omit `nargs`. Script defaults remain in the parsed list and entered
+values are appended to them. Other arguments using `nargs="+"`, `"*"`, or a fixed count receive multiple values after
 one flag. For example:
 
 ```text
@@ -398,7 +400,7 @@ and removing rows, parser round trips, defaults, and session state restoration.
   Module side effects and imported sibling-module caching are not sandboxed.
 - Supported argparse actions are scalar `store`, `store_true`, `store_false`,
   and `BooleanOptionalAction` with long options, with `str`/unspecified type,
-  `int`, `float`, `pathlib.Path`, and choices. Single-value string `append` actions
+  `int`, `float`, `pathlib.Path`, and choices. Single-value `append` actions
   and `nargs='+'` for supported types are supported. String values also support
   other multi-value `nargs` forms. Scalar positional arguments and `nargs='?'`
   are supported. Subparsers, mutually exclusive groups, repeated arguments,

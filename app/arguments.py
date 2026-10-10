@@ -107,7 +107,7 @@ def build_script_arguments(
                 positionals.extend(text_values)
             continue
 
-        if parameter.nargs == "+":
+        if parameter.nargs == "+" or parameter.action_type == "append":
             converted_values: list[str] = []
             converter = parameter.parameter_type or str
             for item in items:
@@ -120,6 +120,20 @@ def build_script_arguments(
                 if parameter.choices is not None and converted not in parameter.choices:
                     raise ParameterValidationError(f"Choose one of the listed values for {label}.")
                 converted_values.append(str(converted))
+            if parameter.action_type == "append":
+                if parameter.option:
+                    for text in converted_values:
+                        if text.startswith("-"):
+                            options.append(f"{parameter.option}={text}")
+                        else:
+                            options.extend([parameter.option, text])
+                else:
+                    if omitted_positional:
+                        raise ParameterValidationError("Fill earlier positional arguments before later ones.")
+                    if len(converted_values) != 1:
+                        raise ParameterValidationError(f"{label} accepts one positional value. Remove the extra rows.")
+                    positionals.extend(converted_values)
+                continue
             if parameter.option:
                 if parameter.parameter_type not in (int, float) and any(value.startswith("-") for value in converted_values[1:]):
                     raise ParameterValidationError(f"{label}: only the first value may begin with '-'.")

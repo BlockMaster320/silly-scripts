@@ -54,7 +54,7 @@ class ParameterEditor(QWidget):
             self.string_inputs = StringInputs(parameter, initial)
             self.string_inputs.changed.connect(self.changed)
             self.control = self.string_inputs.first_control
-        elif parameter.nargs == "+":
+        elif parameter.nargs == "+" or parameter.action_type == "append":
             self.multiple_inputs = MultiValueInputs(parameter, initial)
             self.multiple_inputs.changed.connect(self.changed)
             self.control = self.multiple_inputs.first_control
@@ -114,6 +114,7 @@ class ParameterEditor(QWidget):
 
         needs_numeric_presence = (
             parameter.required
+            and parameter.action_type != "append"
             and parameter.nargs != "+"
             and parameter.parameter_type in (int, float)
             and parameter.choices is None

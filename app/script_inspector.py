@@ -120,8 +120,8 @@ class ScriptInspector:
                 )
             if behavior == "store" and action.nargs not in (None, "?", "+") and action.type not in (None, str):
                 raise InspectionError(f"{label}: multi-value nargs={action.nargs!r} is not supported yet.")
-            if behavior == "append" and (action.type not in (None, str) or action.nargs is not None):
-                raise InspectionError(f"{label}: append is supported for single string values only.")
+            if behavior == "append" and action.nargs is not None:
+                raise InspectionError(f"{label}: append flags must each take one value (omit nargs).")
             if shot_selection and behavior in ("store", "append"):
                 if action.type not in (None, str) or action.choices is not None or action.nargs not in (None, "?"):
                     raise InspectionError(f"{label}: shot selections must be single string values without choices.")

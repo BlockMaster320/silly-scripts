@@ -10,6 +10,8 @@ QLabel[role="sectionHeading"] { font-size: 17px; font-weight: 600; }
 QLabel[role="sectionHeading"]:disabled { color: $disabled; }
 QFrame[role="sectionDivider"] { background: $section_rule; border: none; }
 QFrame[role="sectionDivider"]:disabled { background: $border; }
+QFrame[role="sectionDivider"][variant="script"] { background: $parameter_rule; }
+QFrame[role="sectionDivider"][variant="script"]:disabled { background: $border; }
 QLabel[role="muted"], QLabel[role="help"] { color: $muted; }
 QLabel[role="help"] { font-size: 12px; }
 QLabel[role="required"] { font-weight: 600; }

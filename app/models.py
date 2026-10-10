@@ -50,7 +50,7 @@ class ScriptParameter:
 
     @property
     def is_path_selection(self) -> bool:
-        return self.action_type == "store" and self.parameter_type is Path
+        return self.action_type in ("store", "append") and self.parameter_type is Path
 
     @property
     def is_folder_selection(self) -> bool:

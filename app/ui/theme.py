@@ -17,6 +17,7 @@ PALETTE = {
     "console": "#0d0f13",
     "border": "#3a424f",
     "section_rule": "#59616e",
+    "parameter_rule": "#3a424f",
     "text": "#dce1e9",
     "muted": "#a0aaba",
     "disabled": "#818b9b",

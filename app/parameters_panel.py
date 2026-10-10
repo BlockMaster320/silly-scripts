@@ -107,7 +107,7 @@ class ParametersPanel(QWidget):
         blender_layout.addWidget(self.resync)
         layout.addWidget(self.blender_group)
 
-        self.parameter_group = Section("Script parameters")
+        self.parameter_group = Section("Script parameters", subdued=True)
         parameter_layout = QVBoxLayout(self.parameter_group.body)
         parameter_layout.setContentsMargins(0, SMALL, 0, 0)
         parameter_layout.setSpacing(SMALL)

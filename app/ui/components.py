@@ -9,7 +9,7 @@ from .theme import NORMAL, SMALL
 class Section(QWidget):
     """A heading and trailing rule above a body with a caller-owned layout."""
 
-    def __init__(self, title: str) -> None:
+    def __init__(self, title: str, *, subdued: bool = False) -> None:
         super().__init__()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -23,13 +23,17 @@ class Section(QWidget):
         rule = QFrame()
         rule.setProperty("role", "sectionDivider")
         rule.setFixedHeight(1)
-        holder = QWidget()
-        rule_layout = QVBoxLayout(holder)
-        rule_layout.setContentsMargins(0, SMALL, 0, 0)
-        rule_layout.setSpacing(0)
-        rule_layout.addWidget(rule)
-        holder.setFixedHeight(SMALL + 1)
-        header.addWidget(holder, 1, Qt.AlignmentFlag.AlignVCenter)
+        if subdued:
+            rule.setProperty("variant", "script")
+            holder = QWidget()
+            rule_layout = QVBoxLayout(holder)
+            rule_layout.setContentsMargins(0, SMALL, 0, 0)
+            rule_layout.setSpacing(0)
+            rule_layout.addWidget(rule)
+            holder.setFixedHeight(SMALL + 1)
+            header.addWidget(holder, 1, Qt.AlignmentFlag.AlignVCenter)
+        else:
+            header.addWidget(rule, 1, Qt.AlignmentFlag.AlignVCenter)
         layout.addLayout(header)
         self.body = QWidget()
         layout.addWidget(self.body)

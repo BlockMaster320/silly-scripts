@@ -160,7 +160,7 @@ class ParameterConfigStore:
             if not isinstance(enabled, bool) or not cls._valid_value(value):
                 continue
             items = value if isinstance(value, list) else [value]
-            if isinstance(value, list) and not (parameter.is_string or parameter.nargs == "+"):
+            if isinstance(value, list) and not (parameter.is_string or parameter.nargs == "+" or parameter.action_type == "append"):
                 continue
             if parameter.action_type in ("store_true", "store_false", "boolean_optional"):
                 if value is not None and not isinstance(value, bool):
@@ -171,7 +171,7 @@ class ParameterConfigStore:
                     continue
                 selected = [None if item is None else choices[str(item)] for item in items]
                 value = selected if isinstance(value, list) else selected[0]
-            elif parameter.parameter_type in (int, float) and parameter.nargs != "+":
+            elif parameter.parameter_type in (int, float) and parameter.nargs != "+" and parameter.action_type != "append":
                 if value is not None and value != "":
                     try:
                         number = parameter.parameter_type(value)

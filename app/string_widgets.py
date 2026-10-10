@@ -125,6 +125,11 @@ class MultiValueInputs(QWidget):
         values = initial if isinstance(initial, (list, tuple)) else [initial]
         for value in values or [None]:
             self.add_value(value)
+        if parameter.action_type == "append" and parameter.default:
+            hint = QLabel(f"Script defaults are retained: {parameter.default}")
+            hint.setProperty("role", "help")
+            hint.setWordWrap(True)
+            layout.addWidget(hint)
 
     @property
     def first_control(self) -> QWidget:
