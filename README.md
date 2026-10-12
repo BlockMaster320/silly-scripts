@@ -39,7 +39,7 @@ Use **Add library** to select one or more script directories, or the remove butt
 
 Global preferences are remembered. Script and batch parameter values are saved when you run a script and restored when it is loaded again.
 
-## For programmers
+## For scripters
 
 Use **Create blank script** or **Create blank batch script** in the left panel as the starting point for new scripts. Both create an editable template with the launcher-compatible structure already in place.
 
