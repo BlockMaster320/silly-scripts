@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QFormLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPlainTextEdit, QPushButton, QScrollArea, QVBoxLayout, QWidget,
+    QApplication, QCheckBox, QComboBox, QFormLayout, QHBoxLayout,
+    QLabel, QLineEdit, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
 from .arguments import ParameterValidationError, build_process_arguments, build_script_arguments
@@ -13,6 +13,7 @@ from .batch_support import BATCH_RUNNER
 from .models import ScriptInfo, ScriptParameter, ScriptRuntimeState
 from .parameter_widgets import ParameterForm
 from .ui.components import Section
+from .ui.console import CommandPreview, CommandPreviewHighlighter
 from .ui.theme import LABEL_WIDTH, PAGE, SECTION, SMALL, TINY, monospace_font, style_button
 
 
@@ -42,6 +43,8 @@ class ParametersPanel(QWidget):
             if item.widget():
                 item.widget().deleteLater()
         self.script, self.state, self.form = script, state, None
+        self.batch_form = None
+        self.batch_error_label = None
         content = QWidget()
         layout = QVBoxLayout(content)
         content.setObjectName("pageContent")
@@ -61,8 +64,23 @@ class ParametersPanel(QWidget):
             layout.addStretch(1)
             return
 
+        if not state.is_running and (not state.run_mode_initialized or script.metadata.force_default_run_mode):
+            state.batch_mode = script.metadata.default_run_mode == "batch"
+            state.run_mode_initialized = True
         if state.batch_mode:
             state.runtime = "Blender"
+
+        self.description_group = Section("Description")
+        description_layout = QVBoxLayout(self.description_group.body)
+        description_layout.setContentsMargins(0, SMALL, 0, 0)
+        self.description_label = QLabel(script.description or "No description provided.")
+        self.description_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.description_label.setWordWrap(True)
+        self.description_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        if not script.description:
+            self.description_label.setProperty("role", "muted")
+        description_layout.addWidget(self.description_label)
+        layout.addWidget(self.description_group)
 
         self.execution_group = Section("Execution")
         execution_layout = QFormLayout(self.execution_group.body)
@@ -184,16 +202,29 @@ class ParametersPanel(QWidget):
         command_layout.setSpacing(SMALL)
         command_note = QLabel("PowerShell syntax · updates as you edit")
         command_note.setProperty("role", "help")
-        command_layout.addWidget(command_note)
-        self.command_preview = QPlainTextEdit()
+        command_toolbar = QHBoxLayout()
+        command_toolbar.setSpacing(SMALL)
+        command_toolbar.addWidget(command_note, 1)
+        self.copy_command_button = QPushButton("Copy")
+        style_button(self.copy_command_button, "copy")
+        self.copy_command_button.setAccessibleName("Copy command preview")
+        self.copy_command_button.setToolTip("Copy the entire command preview to the clipboard")
+        self.copy_command_button.setEnabled(False)
+        self.copy_command_button.clicked.connect(self._copy_command_preview)
+        command_toolbar.addWidget(self.copy_command_button)
+        command_layout.addLayout(command_toolbar)
+        self.command_preview = CommandPreview()
         self.command_preview.setProperty("role", "console")
         self.command_preview.setFont(monospace_font())
         self.command_preview.setAccessibleName("Command preview")
         self.command_preview.setReadOnly(True)
-        self.command_preview.setMaximumBlockCount(200)
-        self.command_preview.setMinimumHeight(144)
-        self.command_preview.setMaximumHeight(192)
         self.command_preview.setPlaceholderText("The command preview will appear here.")
+        self.command_highlighter = CommandPreviewHighlighter(
+            self.command_preview.document(), self._preview_options(),
+        )
+        self.command_preview.textChanged.connect(
+            lambda: self.copy_command_button.setEnabled(bool(self.command_preview.toPlainText()))
+        )
         command_layout.addWidget(self.command_preview)
         layout.addWidget(command_group)
         footer = QWidget()
@@ -233,6 +264,13 @@ class ParametersPanel(QWidget):
     def _run_mode_changed(self, index: int) -> None:
         if not self.state:
             return
+        if self.script and self.script.metadata.force_default_run_mode:
+            required_index = 1 if self.script.metadata.default_run_mode == "batch" else 0
+            if index != required_index:
+                self.run_mode.blockSignals(True)
+                self.run_mode.setCurrentIndex(required_index)
+                self.run_mode.blockSignals(False)
+                return
         self.state.batch_mode = index == 1
         if self.state.batch_mode and self.runtime.currentText() != "Blender":
             self.runtime.setCurrentText("Blender")
@@ -263,6 +301,29 @@ class ParametersPanel(QWidget):
     def _powershell_quote(value: str) -> str:
         return "'" + value.replace("'", "''") + "'"
 
+    def _copy_command_preview(self) -> None:
+        QApplication.clipboard().setText(self.command_preview.toPlainText())
+
+    def _preview_options(self) -> set[str]:
+        options = {"--", "--python", "--background", "--disable-liboverride-auto-resync", "--manifest"}
+        for parameter in [*self.script.parameters, *(self.batch_parameters or [])]:
+            options.update(parameter.option_strings)
+        return options
+
+    def _preview_group(self, group: list[str]) -> str:
+        """Leave option names bare while keeping every value safely quoted."""
+        options = self._preview_options()
+        rendered = []
+        for index, token in enumerate(group):
+            name, separator, value = token.partition("=")
+            if index == 0 and name in options and name.replace("-", "").replace("_", "").isalnum():
+                rendered.append(name + ("=" + self._powershell_quote(value) if separator else ""))
+            elif index == 0 and token == "--":
+                rendered.append(token)
+            else:
+                rendered.append(self._powershell_quote(token))
+        return " ".join(rendered)
+
     def refresh_command_preview(self) -> None:
         if not self.script or not self.state or not self.form:
             return
@@ -275,7 +336,9 @@ class ParametersPanel(QWidget):
                     self.state,
                 )
             else:
-                process_arguments = build_process_arguments(self.script.path, script_arguments, self.state)
+                process_arguments = build_process_arguments(
+                    self.script.path, script_arguments, self.state, call_main=not self.script.has_parser,
+                )
             prefix_count = len(process_arguments) - len(script_arguments)
             if self.state.batch_mode:
                 prefix_count = len(process_arguments)
@@ -285,20 +348,20 @@ class ParametersPanel(QWidget):
             lines = [f"& {self._powershell_quote(self.executable)} `"]
             for index, group in enumerate(display_groups):
                 continuation = " `" if index < len(display_groups) - 1 else ""
-                quoted = " ".join(self._powershell_quote(token) for token in group)
+                quoted = self._preview_group(group)
                 lines.append(f"    {quoted}{continuation}")
             if self.state.batch_mode:
                 lines.extend(["", f"# Target script: {self.script.path}"])
                 lines.append("# Target script arguments passed once for each file:")
                 lines.extend(
-                    "#   " + " ".join(self._powershell_quote(token) for token in group)
+                    "#   " + self._preview_group(group)
                     for group in self._group_script_arguments(script_arguments)
                 )
                 if self.batch_form:
                     selection_arguments = self.batch_form.arguments()
                     lines.append("# Batch selection arguments stored in the manifest:")
                     lines.extend(
-                        "#   " + " ".join(self._powershell_quote(token) for token in group)
+                        "#   " + self._preview_group(group)
                         for group in self._group_script_arguments(selection_arguments, self.batch_form.parameters)
                     )
             preview = "\n".join(lines)
@@ -358,7 +421,9 @@ class ParametersPanel(QWidget):
         running = self.state.is_running
         self.execution_group.setEnabled(not running)
         self.blender_group.setEnabled(not running and self.state.runtime == "Blender")
-        self.run_mode.setEnabled(not running and self.batch_parameters is not None)
+        self.run_mode.setEnabled(
+            not running and self.batch_parameters is not None and not self.script.metadata.force_default_run_mode
+        )
         self.runtime.setEnabled(not running and not self.state.batch_mode)
         self.parameter_group.setEnabled(not running)
         self.batch_group.setEnabled(not running)

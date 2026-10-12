@@ -4,8 +4,8 @@ from pathlib import Path
 from string import Template
 
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QColor, QFont, QFontDatabase, QIcon, QPainter, QPalette, QPixmap
-from PySide6.QtWidgets import QApplication, QPushButton, QWidget
+from PySide6.QtGui import QBrush, QColor, QFont, QFontDatabase, QIcon, QPainter, QPalette, QPixmap
+from PySide6.QtWidgets import QApplication, QPushButton, QTreeWidgetItem, QWidget
 
 
 PALETTE = {
@@ -19,6 +19,7 @@ PALETTE = {
     "section_rule": "#59616e",
     "parameter_rule": "#3a424f",
     "text": "#dce1e9",
+    "command_text": "#ffffff",
     "muted": "#a0aaba",
     "disabled": "#818b9b",
     "accent": "#87aee8",
@@ -38,12 +39,15 @@ TINY, SMALL, NORMAL, SECTION, PAGE = 4, 8, 12, 16, 24
 CONTROL_HEIGHT = 36
 LABEL_WIDTH = 160
 ICON_SIZE = 16
+SIDEBAR_WIDTH = 300
+TOOLTIP_WIDTH = 400
 UI_ROOT = Path(__file__).resolve().parent
 
 
 def apply_theme(application: QApplication) -> None:
     """Apply once, before creating widgets, including a palette for dialogs."""
     application.setStyle("Fusion")
+    application.setWindowIcon(QIcon(str(UI_ROOT / "graphics" / "logo.png")))
     palette = QPalette()
     roles = {
         QPalette.ColorRole.Window: "background",
@@ -72,11 +76,26 @@ def apply_theme(application: QApplication) -> None:
     application.setFont(font)
     template = Template((UI_ROOT / "styles.qss").read_text(encoding="utf-8"))
     application.setStyleSheet(template.substitute(PALETTE, icons=(UI_ROOT / "icons").as_posix()))
+    # Install once; retained on the application for its complete lifetime.
+    from .tooltips import TooltipPresenter
+    if not hasattr(application, "_sillyscripts_tooltips"):
+        presenter = TooltipPresenter(application)
+        application.installEventFilter(presenter)
+        application._sillyscripts_tooltips = presenter
+    from .interaction import InteractionCursors
+    if not hasattr(application, "_sillyscripts_cursors"):
+        cursors = InteractionCursors(application)
+        application.installEventFilter(cursors)
+        application._sillyscripts_cursors = cursors
 
 
 def icon(name: str) -> QIcon:
     """Original 24px outline assets, with a shared stroke and geometry."""
     return QIcon(str(UI_ROOT / "icons" / f"{name}.svg"))
+
+
+def style_script_item(item: QTreeWidgetItem, unavailable: bool) -> None:
+    item.setForeground(0, QBrush(QColor(PALETTE["danger"])) if unavailable else QBrush())
 
 
 def style_button(button: QPushButton, name: str | None = None, role: str = "secondary") -> None:

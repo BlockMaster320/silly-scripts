@@ -8,6 +8,7 @@ a = Analysis(
     datas=[
         ('app/ui/styles.qss', 'app/ui'),
         ('app/ui/icons', 'app/ui/icons'),
+        ('app/ui/graphics', 'app/ui/graphics'),
         ('scripts/templates', 'scripts/templates'),
         ('scripts/default', 'scripts/default'),
         ('scripts/test_scripts', 'scripts/test_scripts'),
@@ -29,6 +30,7 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name='SillyScripts',
+    icon='app/ui/graphics/logo.ico',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

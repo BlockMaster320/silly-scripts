@@ -54,6 +54,38 @@ class InspectionTests(unittest.TestCase):
             with self.subTest(error=error):
                 self.assertIn(error, self.inspect_source(source).inspection_error)
 
+    def test_parser_description_and_script_metadata_become_neutral_models(self) -> None:
+        info = self.inspect_source(
+            "import argparse\ndef create_parser():\n"
+            "    parser = argparse.ArgumentParser(description='Process scene assets.\\nKeeps materials.')\n"
+            "    parser.script_metadata = {'default_run_mode': 'batch', 'force_default_run_mode': True, 'future_key': 'ignored'}\n"
+            "    return parser\n"
+        )
+        self.assertIsNone(info.inspection_error)
+        self.assertEqual(info.description, "Process scene assets.\nKeeps materials.")
+        self.assertEqual(info.metadata.default_run_mode, "batch")
+        self.assertTrue(info.metadata.force_default_run_mode)
+        defaults = self.inspect_source("import argparse\ndef create_parser():\n    return argparse.ArgumentParser()\n")
+        self.assertIsNone(defaults.description)
+        self.assertEqual(defaults.metadata.default_run_mode, "single")
+        self.assertFalse(defaults.metadata.force_default_run_mode)
+
+    def test_invalid_script_metadata_and_description_report_clear_errors(self) -> None:
+        for value, error in (
+            ("None", "dictionary"), ("{'default_run_mode': 'wrong'}", "'single' or 'batch'"),
+            ("{'force_default_run_mode': 'False'}", "True or False"),
+        ):
+            with self.subTest(value=value):
+                info = self.inspect_source(
+                    "import argparse\ndef create_parser():\n"
+                    "    parser = argparse.ArgumentParser()\n"
+                    f"    parser.script_metadata = {value}\n    return parser\n"
+                )
+                self.assertIn(error, info.inspection_error)
+        info = self.inspect_source("import argparse\ndef create_parser():\n    return argparse.ArgumentParser(description=123)\n")
+        self.assertIn("description must be", info.inspection_error)
+        self.assertIsNone(info.description)
+
     def test_top_level_bpy_import_is_allowed_for_parser_inspection(self) -> None:
         info = self.inspect_source(
             "import argparse\nimport bpy\n"

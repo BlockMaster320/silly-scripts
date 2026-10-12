@@ -175,8 +175,12 @@ def build_script_arguments(
 
 
 def build_process_arguments(
-    script_path: Path, script_arguments: list[str], state: ScriptRuntimeState
+    script_path: Path, script_arguments: list[str], state: ScriptRuntimeState,
+    *, call_main: bool = False,
 ) -> list[str]:
+    if call_main:
+        script_arguments = [str(script_path), *script_arguments]
+        script_path = Path(__file__).resolve().parents[1] / "scripts" / "templates" / "main_runner.py"
     if state.runtime == "Python":
         return [str(script_path), *script_arguments]
     if state.runtime != "Blender":

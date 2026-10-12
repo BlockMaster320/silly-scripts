@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, QSize
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtGui import QCloseEvent, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView, QHBoxLayout, QInputDialog, QLabel, QMainWindow, QMessageBox, QPushButton,
     QSplitter, QTabWidget, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
@@ -24,7 +24,10 @@ from .script_inspector import ScriptInspector
 from .script_templates import TemplateKind, create_script
 from .settings import AppSettings
 from .settings_panel import SettingsPanel
-from .ui.theme import PAGE, SECTION, SMALL, TINY, icon, set_variant, style_button
+from .ui.file_actions import open_script_file
+from .ui.components import SingleLineTitle
+from .ui.navigation import ScriptItemDelegate
+from .ui.theme import CONTROL_HEIGHT, PAGE, SECTION, SIDEBAR_WIDTH, SMALL, TINY, UI_ROOT, icon, set_variant, style_button, style_script_item
 
 
 class MainWindow(QMainWindow):
@@ -55,6 +58,7 @@ class MainWindow(QMainWindow):
         splitter.setHandleWidth(TINY)
         self.sidebar = QTreeWidget()
         self.sidebar.setObjectName("scriptTree")
+        self.sidebar.setItemDelegate(ScriptItemDelegate(self.sidebar))
         self.sidebar.setHeaderHidden(True)
         self.sidebar.setAccessibleName("Script libraries")
         self.sidebar.setIndentation(SECTION)
@@ -77,7 +81,18 @@ class MainWindow(QMainWindow):
         sidebar_layout.setSpacing(SMALL)
         brand = QLabel("SillyScripts")
         brand.setProperty("role", "brand")
-        sidebar_layout.addWidget(brand)
+        brand_row = QHBoxLayout()
+        brand_row.setSpacing(SMALL)
+        logo = QLabel()
+        logo.setAccessibleName("SillyScripts logo")
+        logo.setFixedSize(SECTION * 2, SECTION * 2)
+        logo.setPixmap(QPixmap(str(UI_ROOT / "graphics" / "logo.png")).scaled(
+            logo.size(), Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        ))
+        brand_row.addWidget(logo)
+        brand_row.addWidget(brand, 1)
+        sidebar_layout.addLayout(brand_row)
         subtitle = QLabel("Blender & Python tools")
         subtitle.setProperty("role", "help")
         sidebar_layout.addWidget(subtitle)
@@ -107,15 +122,27 @@ class MainWindow(QMainWindow):
         header = QHBoxLayout()
         heading_layout = QVBoxLayout()
         heading_layout.setSpacing(TINY)
-        self.script_heading = QLabel("Select a script")
+        self.script_heading = SingleLineTitle("Select a script")
         self.script_heading.setTextFormat(Qt.TextFormat.PlainText)
         self.script_heading.setProperty("role", "pageHeading")
-        self.script_heading.setWordWrap(True)
         self.script_subtitle = QLabel("Choose a script library to get started")
         self.script_subtitle.setTextFormat(Qt.TextFormat.PlainText)
         self.script_subtitle.setProperty("role", "muted")
         self.script_subtitle.setWordWrap(True)
-        heading_layout.addWidget(self.script_heading)
+        heading_row = QHBoxLayout()
+        heading_row.setSpacing(SMALL)
+        heading_row.addWidget(self.script_heading)
+        self.open_script_button = QPushButton()
+        self.open_script_button.setObjectName("openScriptButton")
+        style_button(self.open_script_button, "file-edit", "icon")
+        self.open_script_button.setProperty("appearance", "bare")
+        self.open_script_button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+        self.open_script_button.setFixedWidth(CONTROL_HEIGHT)
+        self.open_script_button.setAccessibleName("Open script in editor")
+        self.open_script_button.clicked.connect(self._open_active_script)
+        heading_row.addWidget(self.open_script_button, 0, Qt.AlignmentFlag.AlignVCenter)
+        heading_row.addStretch(1)
+        heading_layout.addLayout(heading_row)
         heading_layout.addWidget(self.script_subtitle)
         header.addLayout(heading_layout, 1)
         self.script_badge = QLabel("Idle")
@@ -138,7 +165,7 @@ class MainWindow(QMainWindow):
         content_layout.addWidget(self.tabs, 1)
         splitter.addWidget(main_content)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([244, 856])
+        splitter.setSizes([SIDEBAR_WIDTH, self.width() - SIDEBAR_WIDTH])
         self.setCentralWidget(splitter)
         self.parameters.run_requested.connect(self._run_active)
         self.parameters.stop_requested.connect(self._stop_active)
@@ -171,7 +198,10 @@ class MainWindow(QMainWindow):
         try:
             library = self.script_libraries.get(self.active_path) if self.active_path else None
             if library is None:
-                library = self.settings.scripts_folders[0]
+                folders = self.settings.scripts_folders
+                if not folders:
+                    raise ValueError("Add a script library in Settings before creating a script.")
+                library = folders[0]
             path = create_script(library, name, kind)
         except FileExistsError:
             QMessageBox.warning(self, title, "A file with that name already exists. Choose another filename.")
@@ -284,11 +314,14 @@ class MainWindow(QMainWindow):
         suffix = "  [Running]" if state.is_running else "  [Unavailable]" if script.inspection_error else ""
         self.items[path].setText(0, script.name + suffix)
         self.items[path].setIcon(0, icon("play" if state.is_running else "file-code"))
+        style_script_item(self.items[path], bool(script.inspection_error))
         self.items[path].setToolTip(0, f"{path}\n{script.inspection_error or state.status}")
 
     def _update_header(self) -> None:
         """Presentation only; the process manager remains the state owner."""
         script = self.scripts.get(self.active_path)
+        self.open_script_button.setVisible(script is not None)
+        self.open_script_button.setEnabled(script is not None and script.path.is_file())
         if script is None:
             self.script_heading.setText("Select a script")
             self.script_subtitle.setText("Choose a script from a library in the sidebar")
@@ -296,6 +329,7 @@ class MainWindow(QMainWindow):
             set_variant(self.script_badge, "status", "idle")
             return
         state = self.processes.state_for(script.path)
+        self.open_script_button.setToolTip(f"Open script in editor\n{script.path}")
         self.script_heading.setText(script.name.replace("_", " ").replace("-", " ").title())
         self.script_heading.setToolTip(str(script.path))
         self.script_subtitle.setText(f"{state.runtime} · {script.path.name}")
@@ -304,6 +338,10 @@ class MainWindow(QMainWindow):
         self.script_badge.setToolTip(script.inspection_error or state.status)
         status = "stopping" if state.status.startswith("Stopping") else "running" if state.is_running else "error" if script.inspection_error or state.status.startswith(("Failed", "Error", "Crashed")) else "idle"
         set_variant(self.script_badge, "status", status)
+
+    def _open_active_script(self) -> None:
+        if self.active_path and not open_script_file(self.active_path):
+            self.statusBar().showMessage(f"Could not open script in an editor: {self.active_path}")
 
     def _run_active(self) -> None:
         if not self.active_path or not self.parameters.form:

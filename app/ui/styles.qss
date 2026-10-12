@@ -40,6 +40,12 @@ QPushButton[role="quiet"] { background: transparent; border-color: transparent; 
 QPushButton[role="quiet"]:hover { background: $surface_hover; }
 QPushButton[role="quiet"]:focus { border-color: $accent; }
 QPushButton[role="icon"] { padding: 8px; min-height: 18px; max-height: 18px; min-width: 16px; }
+QPushButton[appearance="bare"], QPushButton[appearance="bare"]:hover,
+QPushButton[appearance="bare"]:pressed, QPushButton[appearance="bare"]:disabled {
+    background: transparent; border-color: transparent;
+}
+QPushButton[appearance="bare"]:focus { border-color: $accent; }
+QPushButton#openScriptButton { padding-top: 10px; padding-bottom: 6px; }
 
 QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox { background: $input; border: 1px solid $border; border-radius: 6px; padding: 7px 10px; min-height: 20px; max-height: 20px; selection-background-color: $selection; selection-color: $text; }
 QLineEdit:hover, QSpinBox:hover, QDoubleSpinBox:hover, QComboBox:hover { border-color: $muted; }
@@ -85,7 +91,7 @@ QTabBar::tab:focus { border-bottom-color: $accent; }
 QTreeWidget#scriptTree { background: $sidebar; border: none; outline: none; padding: 0; selection-background-color: $selection; }
 QTreeWidget#scriptTree::item { min-height: 18px; padding: 8px 4px; border-left: 2px solid transparent; }
 QTreeWidget#scriptTree::item:hover { background: $surface; }
-QTreeWidget#scriptTree::item:selected { background: $selection; color: $text; border-left-color: $accent; }
+QTreeWidget#scriptTree::item:selected { background: $selection; border-left-color: $accent; }
 QTreeWidget#scriptTree::item:focus { border-left-color: $accent; }
 QTreeWidget#scriptTree::branch { background: $sidebar; }
 QTreeWidget#scriptTree::branch:has-children:closed { image: url("$icons/chevron-right.svg"); }

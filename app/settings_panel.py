@@ -244,16 +244,16 @@ class SettingsPanel(QWidget):
         return row
 
     def _browse_folder(self) -> None:
-        self.folder_rows[0]._browse()
+        if self.folder_rows:
+            self.folder_rows[0]._browse()
+        else:
+            self._add_library()
 
     def _commit_folder(self) -> bool:
         return self._commit_folders()
 
     def _commit_folders(self) -> bool:
         folders = self.selected_folders()
-        if not folders:
-            self.message.setText("At least one script library must remain selected.")
-            return False
         previous = self.settings.scripts_folders
         if folders == previous:
             return False
@@ -291,7 +291,7 @@ class SettingsPanel(QWidget):
             self._update_remove_buttons()
 
     def _remove_library(self, row: ScriptLibraryRow) -> None:
-        if len(self.folder_rows) <= 1:
+        if row not in self.folder_rows:
             return
         self.folder_rows.remove(row)
         self.libraries_layout.removeWidget(row)
@@ -302,7 +302,7 @@ class SettingsPanel(QWidget):
 
     def _update_remove_buttons(self) -> None:
         for row in self.folder_rows:
-            row.remove_button.setEnabled(len(self.folder_rows) > 1)
+            row.remove_button.setEnabled(True)
 
     def _refresh(self) -> None:
         if not self._commit_folders():

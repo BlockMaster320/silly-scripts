@@ -12,9 +12,10 @@ import importlib.util
 import sys
 import types
 import uuid
+from collections.abc import Mapping
 from pathlib import Path
 
-from .models import SHOT_SELECTION_OPTIONS, ScriptInfo, ScriptParameter
+from .models import SHOT_SELECTION_OPTIONS, ScriptInfo, ScriptMetadata, ScriptParameter
 
 
 class InspectionError(Exception):
@@ -77,11 +78,22 @@ class ScriptInspector:
             code = compile(path.read_bytes(), str(path), "exec")
             exec(code, module.__dict__)
             factory = getattr(module, "create_parser", None)
+            if "create_parser" not in module.__dict__:
+                if not callable(getattr(module, "main", None)):
+                    raise InspectionError("This script must expose create_parser() or a callable main().")
+                info.has_parser = False
+                info.description = module.__doc__
+                return info
             if not callable(factory):
-                raise InspectionError("This script must expose a create_parser() function.")
+                raise InspectionError("create_parser must be a callable function.")
             parser = factory()
             if not isinstance(parser, argparse.ArgumentParser):
                 raise InspectionError("create_parser() must return argparse.ArgumentParser.")
+            description = parser.description
+            if description is not None and not isinstance(description, str):
+                raise InspectionError("The parser description must be a string or None.")
+            info.description = description
+            info.metadata = self._metadata(parser)
             info.parameters = self._parameters(parser)
         except (Exception, SystemExit, KeyboardInterrupt) as exc:
             info.inspection_error = f"{type(exc).__name__}: {exc}"
@@ -93,6 +105,19 @@ class ScriptInspector:
             elif original_bpy is not None:
                 sys.modules["bpy"] = original_bpy
         return info
+
+    @staticmethod
+    def _metadata(parser: argparse.ArgumentParser) -> ScriptMetadata:
+        metadata = getattr(parser, "script_metadata", {})
+        if not isinstance(metadata, Mapping):
+            raise InspectionError("parser.script_metadata must be a dictionary.")
+        mode = metadata.get("default_run_mode", "single")
+        if mode not in ("single", "batch"):
+            raise InspectionError("script_metadata.default_run_mode must be 'single' or 'batch'.")
+        force = metadata.get("force_default_run_mode", False)
+        if not isinstance(force, bool):
+            raise InspectionError("script_metadata.force_default_run_mode must be True or False.")
+        return ScriptMetadata(default_run_mode=mode, force_default_run_mode=force)
 
     @staticmethod
     def _parameters(parser: argparse.ArgumentParser) -> list[ScriptParameter]:

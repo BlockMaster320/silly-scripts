@@ -86,7 +86,7 @@ python -m unittest tests.test_ui_design tests.test_inspection tests.test_executa
 All 23 checks pass. The UI checks cover mapping/defaults, repeatable argument
 values, live command preview, batch selection and Blender launch flags,
 concurrent Python runs, duplicate-run prevention, Stop, per-script buffers,
-Clear View, display/disk filters, executable errors, script creation,
+Clear Log, display/disk filters, executable errors, script creation,
 multiple libraries, refresh after a library disappears, and 820×620 resizing.
 The layout regression checks also verify that added/removed text fields retain
 36 px height and 8 px gaps, label tops align with first-control tops, and the

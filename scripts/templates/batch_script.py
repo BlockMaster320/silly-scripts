@@ -26,11 +26,11 @@ def create_parser() -> argparse.ArgumentParser:
         help="Folders excluded with their subfolders. Use + to select more; flags may be repeated.",
     )
     parser.add_argument(
-        "--include-shots", "--include_shots", action="append",
+        "--include-shots", action="append",
         help="Only filename number suffixes in these inclusive ranges. Use 1,4-8,12; flags may be repeated.",
     )
     parser.add_argument(
-        "--exclude-shots", "--exclude_shots", action="append",
+        "--exclude-shots", action="append",
         help="Exclude filename number suffixes after inclusion filtering. Use 2,6-7; flags may be repeated.",
     )
     parser.add_argument(

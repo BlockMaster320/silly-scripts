@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from PySide6.QtCore import QProcess
@@ -74,6 +74,12 @@ class ScriptParameter:
         )
 
 
+@dataclass(frozen=True)
+class ScriptMetadata:
+    default_run_mode: Literal["single", "batch"] = "single"
+    force_default_run_mode: bool = False
+
+
 @dataclass
 class ScriptInfo:
     path: Path
@@ -81,6 +87,9 @@ class ScriptInfo:
     parameters: list[ScriptParameter] = field(default_factory=list)
     inspection_error: str | None = None
     category: str = "Scripts"
+    description: str | None = None
+    metadata: ScriptMetadata = field(default_factory=ScriptMetadata)
+    has_parser: bool = True
 
 
 @dataclass
@@ -107,3 +116,4 @@ class ScriptRuntimeState:
         default_factory=lambda: deque(maxlen=MAX_VISIBLE_LINES)
     )
     status: str = "Idle"
+    run_mode_initialized: bool = False

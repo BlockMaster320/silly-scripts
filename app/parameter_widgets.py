@@ -133,6 +133,7 @@ class ParameterEditor(QWidget):
         self.control.setAccessibleName(parameter.label)
         layout.addWidget(self.string_inputs or self.multiple_inputs or self.control, 1, Qt.AlignmentFlag.AlignTop)
         cli_name = ", ".join(parameter.option_strings) or f"{parameter.name} (positional)"
+        self.setProperty("tooltipKind", "parameter")
         self.setToolTip(f"{cli_name}\n{parameter.help or ''}")
 
     def value(self) -> ParameterValue:

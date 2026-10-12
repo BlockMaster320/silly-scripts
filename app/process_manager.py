@@ -91,7 +91,7 @@ class ProcessManager(QObject):
                     launch_path, ["--manifest", str(manifest_path)], state
                 )
             else:
-                arguments = build_process_arguments(path, script_arguments, state)
+                arguments = build_process_arguments(path, script_arguments, state, call_main=not script.has_parser)
         except OSError as exc:
             if "log" in locals():
                 log.close()

@@ -9,8 +9,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tests.support import APP, wait_until
-from PySide6.QtCore import QPoint, QSettings
-from PySide6.QtGui import QFontDatabase
+from PySide6.QtCore import QPoint, QPointF, QSettings, QEvent, Qt
+from PySide6.QtGui import QFontDatabase, QMouseEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QLabel, QLineEdit, QSpinBox, QStyle, QStyleOptionFrame, QPushButton
 
@@ -19,7 +19,7 @@ from app.main_window import MainWindow
 from app.models import ExecutableInfo
 from app.parameter_config import ParameterConfigStore
 from app.settings import AppSettings
-from app.ui.theme import CONTROL_HEIGHT, SMALL, apply_theme
+from app.ui.theme import CONTROL_HEIGHT, PALETTE, SMALL, apply_theme
 
 PROJECT = Path(__file__).resolve().parents[1]
 
@@ -64,6 +64,44 @@ class RedesignedUiTests(unittest.TestCase):
         self.assertEqual(self.window.active_path, path)
         return path
 
+    def test_parserless_script_has_no_parameters_and_remains_runnable(self) -> None:
+        path = self.library / "parserless.py"
+        path.write_text('"""Parserless tool."""\ndef main():\n    print("[SCRIPT] Hello")\n', encoding="utf-8")
+        self.window.refresh_scripts()
+        self.select(path.name)
+        panel = self.window.parameters
+        self.assertEqual(panel.description_label.text(), "Parserless tool.")
+        self.assertEqual(panel.form.editors, {})
+        self.assertTrue(panel.run_button.isEnabled())
+        self.assertIn("main_runner.py", panel.command_preview.toPlainText())
+        panel.run_mode.setCurrentIndex(1)
+        panel.batch_form.editors["target_directory"].control.set_path(str(self.library))
+        APP.processEvents()
+        self.assertTrue(panel.batch_group.isVisible())
+        self.assertTrue(panel.run_button.isEnabled())
+        self.assertIn("batch_runner.py", panel.command_preview.toPlainText())
+
+    def test_last_library_can_be_removed_and_empty_selection_persists(self) -> None:
+        self.select("basic_types.py")
+        panel = self.window.settings_panel
+        self.assertTrue(panel.folder_rows[0].remove_button.isEnabled())
+        panel.folder_rows[0].remove_button.click()
+        APP.processEvents()
+        self.assertEqual(panel.selected_folders(), [])
+        self.assertEqual(self.settings.scripts_folders, [])
+        self.assertIsNone(self.settings.scripts_folder)
+        self.assertIsNone(self.window.active_path)
+        self.assertEqual(self.window.sidebar.topLevelItemCount(), 0)
+        self.settings.store.sync()
+        restored = AppSettings(self.root, QSettings(str(self.root / "settings.ini"), QSettings.Format.IniFormat))
+        self.assertEqual(restored.scripts_folders, [])
+        with patch("app.settings_panel.QFileDialog.getExistingDirectory", return_value=str(self.library)):
+            panel._add_library()
+        APP.processEvents()
+        self.assertEqual(self.settings.scripts_folders, [self.library])
+        self.assertEqual(len(self.window.items), 4)
+        self.assertTrue(panel.folder_rows[0].remove_button.isEnabled())
+
     def test_navigation_and_controls_keep_values_and_argparse_mapping(self) -> None:
         self.assertEqual([self.window.tabs.tabText(i) for i in range(3)], ["Script", "Log", "Settings"])
         self.assertEqual(self.window.sidebar.topLevelItem(0).text(0), "scripts")
@@ -104,6 +142,153 @@ class RedesignedUiTests(unittest.TestCase):
         ])
         panel.run_mode.setCurrentIndex(0)
         self.assertFalse(panel.batch_group.isVisible())
+
+    def test_description_is_first_and_run_mode_defaults_preserve_session_choices(self) -> None:
+        sample = self.library / "metadata_batch.py"
+        sample.write_text(
+            "import argparse\ndef create_parser():\n"
+            "    parser = argparse.ArgumentParser(description='Modify each selected scene.\\nKeep existing materials.')\n"
+            "    parser.script_metadata = {'default_run_mode': 'batch'}\n"
+            "    return parser\n", encoding="utf-8",
+        )
+        self.window.refresh_scripts()
+        self.select(sample.name)
+        panel = self.window.parameters
+        self.assertIs(panel.scroll.widget().layout().itemAt(0).widget(), panel.description_group)
+        self.assertEqual(panel.description_label.text(), "Modify each selected scene.\nKeep existing materials.")
+        self.assertEqual(panel.description_label.textFormat(), Qt.TextFormat.PlainText)
+        self.assertEqual(panel.run_mode.currentIndex(), 1)
+        self.assertTrue(panel.run_mode.isEnabled())
+        self.assertTrue(panel.batch_group.isVisible())
+        self.assertEqual(panel.runtime.currentText(), "Blender")
+        panel.run_mode.setCurrentIndex(0)
+        self.select("choices.py")
+        self.select(sample.name)
+        self.assertEqual(panel.run_mode.currentIndex(), 0)
+        self.window.refresh_scripts()
+        self.assertEqual(panel.run_mode.currentIndex(), 0)
+
+    def test_forced_run_modes_remain_locked_after_updates_and_switching(self) -> None:
+        for mode, index in (("single", 0), ("batch", 1)):
+            sample = self.library / f"forced_{mode}.py"
+            sample.write_text(
+                "import argparse\ndef create_parser():\n"
+                "    parser = argparse.ArgumentParser()\n"
+                f"    parser.script_metadata = {{'default_run_mode': '{mode}', 'force_default_run_mode': True}}\n"
+                "    return parser\n", encoding="utf-8",
+            )
+            self.window.refresh_scripts()
+            path = self.select(sample.name)
+            panel = self.window.parameters
+            self.assertEqual(panel.run_mode.currentIndex(), index)
+            self.assertFalse(panel.run_mode.isEnabled())
+            self.assertEqual(panel.description_label.text(), "No description provided.")
+            panel.run_mode.setCurrentIndex(1 - index)
+            self.assertEqual(panel.run_mode.currentIndex(), index)
+            self.assertEqual(self.window.processes.state_for(path).batch_mode, bool(index))
+            panel.update_state()
+            self.assertFalse(panel.run_mode.isEnabled())
+            self.select("choices.py")
+            self.select(sample.name)
+            self.assertEqual(panel.run_mode.currentIndex(), index)
+            self.assertFalse(panel.run_mode.isEnabled())
+
+    def test_forced_batch_does_not_fall_back_to_single_if_batch_support_is_missing(self) -> None:
+        sample = self.library / "requires_batch.py"
+        sample.write_text(
+            "import argparse\ndef create_parser():\n"
+            "    parser = argparse.ArgumentParser()\n"
+            "    parser.script_metadata = {'default_run_mode': 'batch', 'force_default_run_mode': True}\n"
+            "    return parser\n", encoding="utf-8",
+        )
+        self.window.parameters.batch_parameters = None
+        self.window.parameters.batch_error = "Missing batch helper"
+        self.window.refresh_scripts()
+        self.select(sample.name)
+        panel = self.window.parameters
+        self.assertEqual(panel.run_mode.currentIndex(), 1)
+        self.assertFalse(panel.run_mode.isEnabled())
+        self.assertFalse(panel.run_button.isEnabled())
+        self.assertTrue(panel.batch_group.isVisible())
+        self.assertTrue(any("Missing batch helper" in label.text() for label in panel.batch_group.findChildren(QLabel)))
+
+    def test_command_preview_colors_and_copy_preserve_literal_text(self) -> None:
+        self.select("basic_types.py")
+        panel = self.window.parameters
+        panel.form.editors["name"].control.setText("A '--count' value")
+        preview = panel.command_preview.toPlainText()
+        self.assertIn("--name 'A ''--count'' value'", preview)
+        panel.command_highlighter.rehighlight()
+        document = panel.command_preview.document()
+        block = document.begin()
+        while block.isValid() and not block.text().lstrip().startswith("--name "):
+            block = block.next()
+        self.assertTrue(block.isValid())
+
+        def color_at(position: int) -> str:
+            for item in block.layout().formats():
+                if item.start <= position < item.start + item.length:
+                    return item.format.foreground().color().name()
+            self.fail(f"No format at {position}")
+
+        text = block.text()
+        self.assertEqual(color_at(text.index("--name")), PALETTE["accent"])
+        self.assertEqual(color_at(text.index("--count")), PALETTE["success"])
+        self.assertEqual(color_at(text.rindex("`")), PALETTE["command_text"])
+        first = document.begin()
+        self.assertTrue(all(item.format.foreground().color().name() == PALETTE["command_text"] for item in first.layout().formats()))
+        original_clipboard = APP.clipboard().text()
+        try:
+            panel.copy_command_button.click()
+            self.assertEqual(APP.clipboard().text(), preview)
+            self.assertEqual(panel.command_preview.toPlainText(), preview)
+        finally:
+            APP.clipboard().setText(original_clipboard)
+
+    def test_checkbox_pointer_is_limited_to_its_clickable_label_and_indicator(self) -> None:
+        self.select("basic_types.py")
+        checkbox = self.window.parameters.form.editors["verbose"].control
+
+        def hover(point: QPoint) -> None:
+            APP.sendEvent(checkbox, QMouseEvent(
+                QEvent.Type.MouseMove, QPointF(point), QPointF(checkbox.mapToGlobal(point)),
+                Qt.MouseButton.NoButton, Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier,
+            ))
+
+        for x in (8, 40):
+            hover(QPoint(x, checkbox.height() // 2))
+            self.assertEqual(checkbox.cursor().shape(), Qt.CursorShape.PointingHandCursor)
+        hover(QPoint(checkbox.width() - 8, checkbox.height() // 2))
+        self.assertEqual(checkbox.cursor().shape(), Qt.CursorShape.ArrowCursor)
+        checkbox.setEnabled(False)
+        hover(QPoint(8, checkbox.height() // 2))
+        self.assertEqual(checkbox.cursor().shape(), Qt.CursorShape.ArrowCursor)
+
+    def test_command_preview_fits_long_and_wrapped_commands_then_shrinks(self) -> None:
+        self.select("basic_types.py")
+        panel = self.window.parameters
+        preview = panel.command_preview
+        QTest.qWait(30)
+        original_height = preview.height()
+        panel.form.editors["name"].control.setText("Long command value " * 100)
+        QTest.qWait(30)
+        wide_height = preview.height()
+        self.assertGreater(wide_height, original_height)
+        self.assertEqual(preview.verticalScrollBar().maximum(), 0)
+        self.window.resize(820, 620)
+        QTest.qWait(30)
+        self.assertGreaterEqual(preview.height(), wide_height)
+        self.assertEqual(preview.verticalScrollBar().maximum(), 0)
+        self.window.resize(1100, 780)
+        panel.form.editors["name"].control.setText("World")
+        QTest.qWait(30)
+        self.assertEqual(preview.height(), original_height)
+        many_lines = "\n".join(f"--argument-{index} 'value'" for index in range(250))
+        preview.setPlainText(many_lines)
+        QTest.qWait(30)
+        self.assertEqual(preview.toPlainText(), many_lines)
+        self.assertEqual(preview.document().blockCount(), 250)
+        self.assertEqual(preview.verticalScrollBar().maximum(), 0)
 
     def test_last_run_values_reload_after_restart_and_unsaved_edits_stay_in_session(self) -> None:
         sample = self.library / "saved_parameters.py"
@@ -452,3 +637,24 @@ class RedesignedUiTests(unittest.TestCase):
         APP.processEvents()
         self.assertTrue(panel.command_preview.isReadOnly())
         self.assertTrue(panel.command_preview.visibleRegion().rectCount() > 0)
+
+    def test_unavailable_scripts_are_red_and_header_opens_source(self) -> None:
+        path = self.select("missing_parser.py")
+        item = self.window.items[path]
+        self.assertEqual(item.foreground(0).color().name(), PALETTE["danger"])
+        self.assertIn("Unavailable", item.text(0))
+        button = self.window.open_script_button
+        self.assertTrue(button.isVisible())
+        self.assertTrue(button.isEnabled())
+        self.assertEqual(button.text(), "")
+        self.assertFalse(button.icon().isNull())
+        with patch("app.main_window.open_script_file", return_value=True) as opened:
+            button.click()
+        opened.assert_called_once_with(path)
+        with patch("app.main_window.open_script_file", return_value=False):
+            button.click()
+        self.assertIn("Could not open script", self.window.statusBar().currentMessage())
+        # Editing a broken parser and refreshing restores the ordinary row color.
+        path.write_text("import argparse\ndef create_parser():\n    return argparse.ArgumentParser()\n", encoding="utf-8")
+        self.window.refresh_scripts()
+        self.assertNotEqual(self.window.items[path].foreground(0).color().name(), PALETTE["danger"])

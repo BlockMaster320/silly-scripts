@@ -13,8 +13,9 @@ class AppSettings:
         self.store = store if store is not None else QSettings("SillyScripts", "Silly Scripts Launcher")
 
     @property
-    def scripts_folder(self) -> Path:
-        return self.scripts_folders[0]
+    def scripts_folder(self) -> Path | None:
+        folders = self.scripts_folders
+        return folders[0] if folders else None
 
     @scripts_folder.setter
     def scripts_folder(self, folder: Path) -> None:
@@ -36,15 +37,16 @@ class AppSettings:
                 relocated = self.project_dir / "scripts" / name
                 if folder.resolve() == legacy.resolve() and not legacy.exists() and relocated.is_dir():
                     folders[index] = relocated
-        return folders or [self.project_dir / "scripts" / "default"]
+        return folders
 
     def set_scripts_folders(self, folders: list[Path]) -> None:
-        if not folders:
-            raise ValueError("At least one scripts folder must remain selected.")
         values = [str(folder) for folder in folders]
         self.store.setValue("scripts_folders", values)
         # Keep the former single-folder setting in step for older launcher builds.
-        self.store.setValue("scripts_folder", values[0])
+        if values:
+            self.store.setValue("scripts_folder", values[0])
+        else:
+            self.store.remove("scripts_folder")
 
     def executable(self, kind: str) -> str:
         return str(self.store.value(f"executables/{kind.lower()}", ""))

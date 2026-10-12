@@ -1,7 +1,6 @@
 """Replace the current scene objects with one monkey mesh.
 
-This is deliberately a single-file script. In batch mode the launcher opens
-each selected .blend file before calling main(), then saves it afterward.
+This is deliberately a single-file script. In batch mode the launcher opens each selected .blend file before calling main(), then saves it afterward.
 """
 
 import argparse
@@ -11,6 +10,11 @@ import bpy
 
 def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
+
+    parser.script_metadata = {
+		"default_run_mode": "batch"
+	}
+
     parser.add_argument(
         "--monkey-name",
         default="Suzanne",

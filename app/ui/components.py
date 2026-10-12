@@ -1,9 +1,46 @@
 """Small composed widgets shared by the parameter and settings pages."""
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from .theme import NORMAL, SMALL
+
+
+class SingleLineTitle(QLabel):
+    """Use the full title's natural width, eliding only when space runs out."""
+
+    def __init__(self, text: str) -> None:
+        super().__init__(text)
+        self._full_text = text
+        self.setWordWrap(False)
+        self.setAccessibleName(text)
+
+    def text(self) -> str:
+        return self._full_text
+
+    def setText(self, text: str) -> None:
+        self._full_text = text
+        self.setAccessibleName(text)
+        self._update_display()
+        self.updateGeometry()
+
+    def sizeHint(self) -> QSize:
+        hint = super().sizeHint()
+        hint.setWidth(self.fontMetrics().horizontalAdvance(self._full_text))
+        return hint
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(0, super().minimumSizeHint().height())
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._update_display()
+
+    def _update_display(self) -> None:
+        super().setText(self.fontMetrics().elidedText(
+            self._full_text, Qt.TextElideMode.ElideRight, self.contentsRect().width(),
+        ))
 
 
 class Section(QWidget):

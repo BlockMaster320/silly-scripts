@@ -1,4 +1,4 @@
-"""View only: the manager owns logs, buffers, and Clear View behavior."""
+"""View only: the manager owns logs, buffers, and Clear Log behavior."""
 
 from pathlib import Path
 
@@ -27,7 +27,7 @@ class LogPanel(QWidget):
         self.title.setWordWrap(True)
         self.title.setProperty("role", "heading")
         toolbar.addWidget(self.title, 1)
-        self.clear_button = QPushButton("Clear View")
+        self.clear_button = QPushButton("Clear Log")
         style_button(self.clear_button, "clear")
         self.clear_button.clicked.connect(self.clear_requested)
         self.open_button = QPushButton("Open Log Folder")
